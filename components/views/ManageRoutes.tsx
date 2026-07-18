@@ -126,7 +126,7 @@ export function ManageRoutes() {
         </div>
         <button 
           onClick={handleOpenCreate}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors"
+          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors"
         >
           <span>+</span> Create New Route
         </button>
@@ -134,7 +134,7 @@ export function ManageRoutes() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="bg-blue-50 p-2.5 rounded-lg text-blue-600">
+          <div className="bg-orange-50 p-2.5 rounded-lg text-orange-600">
             <Clock size={20} />
           </div>
           <div>
@@ -179,7 +179,7 @@ export function ManageRoutes() {
                 key={tab}
                 className={clsx(
                   "px-3 py-1.5 text-xs font-bold rounded-md transition-colors",
-                  i === 0 ? "text-blue-700 bg-blue-50" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  i === 0 ? "text-orange-700 bg-orange-50" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                 )}
               >
                 {tab}
@@ -227,7 +227,7 @@ export function ManageRoutes() {
                 <tr key={route.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="bg-blue-50 text-blue-600 p-1.5 rounded flex-shrink-0">
+                      <div className="bg-orange-50 text-orange-600 p-1.5 rounded flex-shrink-0">
                         <Map size={14} />
                       </div>
                       <span className="font-bold text-slate-900 text-xs">{route.name}</span>
@@ -256,7 +256,7 @@ export function ManageRoutes() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors" title="View on Map"><Map size={14} /></button>
+                      <button className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors" title="View on Map"><Map size={14} /></button>
                       <button 
                         onClick={() => handleOpenAssign(route)}
                         className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" 
@@ -266,7 +266,7 @@ export function ManageRoutes() {
                       </button>
                       <button 
                         onClick={() => handleOpenEdit(route)}
-                        className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" 
+                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors" 
                         title="Edit Route"
                       >
                         <Edit3 size={14} />
@@ -289,7 +289,7 @@ export function ManageRoutes() {
           <span>Showing 4 of 42 routes</span>
           <div className="flex gap-1">
             <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&lt;</button>
-            <button className="w-7 h-7 flex items-center justify-center rounded bg-blue-600 text-white font-bold">1</button>
+            <button className="w-7 h-7 flex items-center justify-center rounded bg-orange-600 text-white font-bold">1</button>
             <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-50 font-medium">2</button>
             <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-50 font-medium">3</button>
             <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&gt;</button>
@@ -324,7 +324,7 @@ export function ManageRoutes() {
                   required
                   value={assignFormData.busId}
                   onChange={(e) => setAssignFormData({...assignFormData, busId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                 >
                   <option value="" disabled>Select a bus</option>
                   {buses.map((bus: any) => (
@@ -342,7 +342,7 @@ export function ManageRoutes() {
                   required
                   value={assignFormData.driverId}
                   onChange={(e) => setAssignFormData({...assignFormData, driverId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                 >
                   <option value="" disabled>Select a driver</option>
                   {drivers.map((driver: any) => (
@@ -398,7 +398,7 @@ export function ManageRoutes() {
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. Morning Route A"
                 />
               </div>
@@ -411,7 +411,7 @@ export function ManageRoutes() {
                   min="1"
                   value={formData.estimatedDuration}
                   onChange={(e) => setFormData({...formData, estimatedDuration: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. 45"
                 />
               </div>
@@ -427,7 +427,7 @@ export function ManageRoutes() {
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
                 >
                   {isSubmitting ? 'Saving...' : (editingRoute ? 'Save Changes' : 'Create Route')}
                 </button>

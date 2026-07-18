@@ -46,7 +46,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+          <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
             <Bus size={28} />
           </div>
         </div>
@@ -54,7 +54,7 @@ export default function LoginPage() {
           Sign in to your account
         </h2>
         <p className="mt-2 text-center text-sm text-slate-500">
-          BusTracker Fleet Management System
+          Voltava Fleet Management System
         </p>
       </div>
 
@@ -77,7 +77,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                   placeholder="admin@fleet.com"
                 />
               </div>
@@ -99,7 +99,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-sm focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                   placeholder="••••••••"
                 />
               </div>
@@ -111,7 +111,7 @@ export default function LoginPage() {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 bg-slate-50"
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 bg-slate-50"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-700 font-medium">
                   Remember me
@@ -119,7 +119,7 @@ export default function LoginPage() {
               </div>
 
               <div className="text-sm">
-                <a href="#" className="font-semibold text-blue-600 hover:text-blue-500 transition-colors">
+                <a href="#" className="font-semibold text-orange-600 hover:text-orange-500 transition-colors">
                   Forgot your password?
                 </a>
               </div>
@@ -129,7 +129,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex w-full justify-center items-center gap-2 rounded-md bg-blue-600 py-2 px-4 text-sm font-bold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                className="flex w-full justify-center items-center gap-2 rounded-md bg-orange-600 py-2 px-4 text-sm font-bold text-white shadow-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {isLoading ? (
                   <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
@@ -144,7 +144,8 @@ export default function LoginPage() {
           </form>
         </div>
         <div className="mt-6 text-center text-xs text-slate-500 font-medium">
-          Protected by GPS Fleet Solutions • <a href="#" className="text-slate-700 hover:underline">Privacy Policy</a>
+          Protected by Voltava Mobility India • <a href="#" className="text-slate-700 hover:underline">Privacy Policy</a>
+          <div className="mt-2 text-slate-400">Proudly built in India 🇮🇳</div>
         </div>
       </div>
     </div>

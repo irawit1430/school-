@@ -8,7 +8,7 @@ interface HeaderProps {
   subtitle?: string;
 }
 
-export function Header({ title = "St. Andrews Academy", subtitle }: HeaderProps) {
+export function Header({ title = "Voltava", subtitle }: HeaderProps) {
   const router = useRouter();
   // Simple static date/time for mockup
   const time = "12:45 PM";
@@ -38,7 +38,7 @@ export function Header({ title = "St. Andrews Academy", subtitle }: HeaderProps)
           <input 
             type="text" 
             placeholder="Search data..." 
-            className="pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-md text-sm w-64 transition-all outline-none"
+            className="pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 rounded-md text-sm w-64 transition-all outline-none"
           />
         </div>
 

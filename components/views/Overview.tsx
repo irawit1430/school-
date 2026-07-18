@@ -66,7 +66,7 @@ export function Overview() {
     initials: (leave.student?.name || 'U').substring(0, 2).toUpperCase(),
     date: new Date(leave.startDate).toLocaleDateString(),
     reason: leave.reason,
-    color: "bg-blue-100 text-blue-700",
+    color: "bg-orange-100 text-orange-700",
     rawId: leave.id
   }));
 
@@ -120,14 +120,14 @@ export function Overview() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Map size={18} className="text-blue-600" /> Live Fleet Map
+              <Map size={18} className="text-orange-600" /> Live Fleet Map
             </h3>
             <div className="flex gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded">Real-time</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded">Real-time</span>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 py-0.5">Heatmap</span>
             </div>
           </div>
-          <div className="flex-1 bg-blue-50/50 p-6 flex items-center justify-center relative min-h-[400px]">
+          <div className="flex-1 bg-orange-50/50 p-6 flex items-center justify-center relative min-h-[400px]">
              {/* Map Placeholder Graphic */}
              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
              
@@ -137,7 +137,7 @@ export function Overview() {
                  <p className="text-xs font-bold text-slate-900">Bus 4</p>
                  <p className="text-[10px] text-slate-500">Speed: 45 km/h</p>
                </div>
-               <div className="w-8 h-8 bg-blue-600 rounded-full text-white flex items-center justify-center shadow-lg border-2 border-white relative z-10">
+               <div className="w-8 h-8 bg-orange-600 rounded-full text-white flex items-center justify-center shadow-lg border-2 border-white relative z-10">
                  <Bus size={14} />
                </div>
              </div>
@@ -199,7 +199,7 @@ export function Overview() {
               ))}
             </div>
             
-            <button className="w-full mt-4 text-xs font-bold text-blue-600 hover:text-blue-700 py-1.5 rounded-md transition-colors">
+            <button className="w-full mt-4 text-xs font-bold text-orange-600 hover:text-orange-700 py-1.5 rounded-md transition-colors">
               View All Routes
             </button>
           </div>
@@ -210,7 +210,7 @@ export function Overview() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
           <h4 className="text-sm font-bold text-slate-800">Recent Leave Applications</h4>
-          <select className="text-xs font-medium border border-slate-200 rounded py-1 px-2 bg-white text-slate-700 outline-none focus:border-blue-500">
+          <select className="text-xs font-medium border border-slate-200 rounded py-1 px-2 bg-white text-slate-700 outline-none focus:border-orange-500">
             <option>All Statuses</option>
             <option>Pending</option>
           </select>
@@ -249,7 +249,7 @@ export function Overview() {
                       <div className="flex items-center justify-end gap-2">
                         <button 
                           onClick={() => handleApproveLeave((leave as any).rawId || (leave as any).id)}
-                          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                          className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
                         >
                           Approve
                         </button>
@@ -268,7 +268,7 @@ export function Overview() {
           </table>
         </div>
         <div className="p-3 border-t border-slate-100 text-center">
-           <button className="text-[11px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider">View All Applications</button>
+           <button className="text-[11px] font-bold text-orange-600 hover:text-orange-700 uppercase tracking-wider">View All Applications</button>
         </div>
       </div>
     </div>
@@ -278,7 +278,7 @@ export function Overview() {
 // Subcomponent for Metric Cards
 function MetricCard({ title, value, trend, icon: Icon, color, isWarning = false, subtitle }: any) {
   const colorStyles: Record<string, string> = {
-    blue: "text-blue-600",
+    blue: "text-orange-600",
     amber: "text-amber-500",
     emerald: "text-emerald-500",
     slate: "text-slate-500"

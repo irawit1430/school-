@@ -21,12 +21,12 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 shrink-0">
       <div className="p-6">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 text-white p-2 rounded-lg">
+          <div className="bg-orange-600 text-white p-2 rounded-lg">
             <Bus size={24} />
           </div>
           <div>
-            <h1 className="font-bold text-lg text-white leading-tight">BusTracker</h1>
-            <p className="text-xs text-slate-400 font-medium">District Hub</p>
+            <h1 className="font-bold text-lg text-white leading-tight">Voltava</h1>
+            <p className="text-xs text-slate-400 font-medium">India HQ</p>
           </div>
         </div>
       </div>
@@ -42,7 +42,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
               className={clsx(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                 isActive 
-                  ? "bg-blue-600 text-white font-medium" 
+                  ? "bg-orange-600 text-white font-medium" 
                   : "text-slate-300 hover:bg-slate-800"
               )}
             >
@@ -68,6 +68,9 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
             <HelpCircle size={18} className="text-slate-400" />
             Support
           </button>
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-800 text-center">
+          <p className="text-[10px] text-slate-500 font-medium tracking-wide">VOLTAVA MOBILITY INDIA 🇮🇳</p>
         </div>
       </div>
     </aside>

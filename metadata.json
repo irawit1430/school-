@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Voltava",
+  "description": "Voltava Fleet Management - The leading Indian fleet mobility system",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

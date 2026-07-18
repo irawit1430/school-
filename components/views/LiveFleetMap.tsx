@@ -104,7 +104,7 @@ export function LiveFleetMap() {
            <div className="space-y-3">
              <div className="flex items-center justify-between">
                <span className="text-sm font-medium text-slate-700">Traffic View</span>
-               <div className="w-8 h-4 bg-blue-600 rounded-full relative cursor-pointer">
+               <div className="w-8 h-4 bg-orange-600 rounded-full relative cursor-pointer">
                  <div className="w-3 h-3 bg-white rounded-full absolute right-0.5 top-0.5"></div>
                </div>
              </div>
@@ -116,7 +116,7 @@ export function LiveFleetMap() {
              </div>
              <div className="flex items-center justify-between">
                <span className="text-sm font-medium text-slate-700">School Zones</span>
-               <div className="w-8 h-4 bg-blue-600 rounded-full relative cursor-pointer">
+               <div className="w-8 h-4 bg-orange-600 rounded-full relative cursor-pointer">
                  <div className="w-3 h-3 bg-white rounded-full absolute right-0.5 top-0.5"></div>
                </div>
              </div>
@@ -139,7 +139,7 @@ export function LiveFleetMap() {
                <button className="p-2 hover:bg-slate-100 rounded transition-colors"><Layers size={18} /></button>
                <button className="p-2 hover:bg-slate-100 rounded transition-colors"><Settings size={18} /></button>
             </div>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg shadow-md font-semibold transition-colors flex items-center gap-2 text-sm">
+            <button className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-lg shadow-md font-semibold transition-colors flex items-center gap-2 text-sm">
               <Focus size={16} /> Recenter All
             </button>
          </div>
@@ -150,14 +150,14 @@ export function LiveFleetMap() {
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-slate-900">Active Fleet</h3>
-            <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-md">{activeBusesCount} Online</span>
+            <span className="text-xs font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded-md">{activeBusesCount} Online</span>
           </div>
           <div className="relative">
             <Filter size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
               placeholder="Filter by status or driver..." 
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:bg-white"
+              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-orange-500 focus:bg-white"
             />
           </div>
         </div>
@@ -224,7 +224,7 @@ export function LiveFleetMap() {
                   <div className="mt-3 flex gap-2">
                     <button className={clsx(
                       "flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold py-1.5 rounded transition-colors shadow-sm",
-                      isAlert ? "text-white bg-red-600 hover:bg-red-700" : "text-blue-600 bg-white border border-blue-100 hover:bg-blue-50"
+                      isAlert ? "text-white bg-red-600 hover:bg-red-700" : "text-orange-600 bg-white border border-orange-100 hover:bg-orange-50"
                     )}>
                       {isAlert ? <><PhoneCall size={12} /> Call Driver</> : <><MessageSquare size={12} /> Contact</>}
                     </button>
@@ -242,7 +242,7 @@ export function LiveFleetMap() {
         </div>
 
         <div className="p-4 border-t border-slate-100">
-           <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm shadow-sm">
+           <button className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm shadow-sm">
              <Bell size={16} /> Broadcast Message to Fleet
            </button>
         </div>

@@ -154,7 +154,7 @@ export function StudentsAttendance() {
           </button>
           <button 
             onClick={handleOpenCreate}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-colors shadow-sm"
+            className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-colors shadow-sm"
           >
             <Plus size={18} /> Add New Student
           </button>
@@ -180,7 +180,7 @@ export function StudentsAttendance() {
             </div>
           </div>
           <div className="w-full bg-slate-100 rounded-full h-2">
-            <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${boardedPercentage}%` }}></div>
+            <div className="bg-orange-600 h-2 rounded-full" style={{ width: `${boardedPercentage}%` }}></div>
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
@@ -207,7 +207,7 @@ export function StudentsAttendance() {
                   key={tab}
                   className={clsx(
                     "text-sm font-semibold pb-4 -mb-4 border-b-2 transition-colors",
-                    i === 0 ? "text-blue-600 border-blue-600" : "text-slate-500 border-transparent hover:text-slate-900"
+                    i === 0 ? "text-orange-600 border-orange-600" : "text-slate-500 border-transparent hover:text-slate-900"
                   )}
                 >
                   {tab}
@@ -246,7 +246,7 @@ export function StudentsAttendance() {
                         student.status === 'Boarded' && "bg-emerald-50 text-emerald-700 border-emerald-100",
                         student.status === 'Absent' && "bg-slate-100 text-slate-600 border-slate-200",
                         student.status === 'Delayed' && "bg-amber-50 text-amber-700 border-amber-100",
-                        student.status === 'At School' && "bg-blue-50 text-blue-700 border-blue-100"
+                        student.status === 'At School' && "bg-orange-50 text-orange-700 border-orange-100"
                       )}>
                         {student.status}
                       </span>
@@ -256,12 +256,12 @@ export function StudentsAttendance() {
                        <div className="flex items-center justify-end gap-2 text-slate-400">
                          <button 
                            onClick={() => handleOpenAssign(student)}
-                           className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors mr-2"
+                           className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors mr-2"
                          >
                            Assign Bus
                          </button>
-                         <button className="p-1.5 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Eye size={18} /></button>
-                         <button className="p-1.5 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Mail size={18} /></button>
+                         <button className="p-1.5 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors"><Eye size={18} /></button>
+                         <button className="p-1.5 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors"><Mail size={18} /></button>
                        </div>
                     </td>
                   </tr>
@@ -324,13 +324,13 @@ export function StudentsAttendance() {
                   "p-3 rounded-lg border flex gap-3",
                   alert.type === 'error' ? "bg-red-50/50 border-red-100" :
                   alert.type === 'warning' ? "bg-amber-50/50 border-amber-100" :
-                  "bg-blue-50/50 border-blue-100"
+                  "bg-orange-50/50 border-orange-100"
                 )}>
                    <div className={clsx(
                      "mt-0.5",
                      alert.type === 'error' ? "text-red-500" :
                      alert.type === 'warning' ? "text-amber-500" :
-                     "text-blue-500"
+                     "text-orange-500"
                    )}>
                      {alert.type === 'error' ? <AlertTriangle size={16} /> :
                       alert.type === 'warning' ? <Clock size={16} /> :
@@ -341,19 +341,19 @@ export function StudentsAttendance() {
                        "text-sm font-bold",
                        alert.type === 'error' ? "text-red-900" :
                        alert.type === 'warning' ? "text-amber-900" :
-                       "text-blue-900"
+                       "text-orange-900"
                      )}>{alert.title}</p>
                      <p className={clsx(
                        "text-xs font-medium mt-0.5",
                        alert.type === 'error' ? "text-red-700" :
                        alert.type === 'warning' ? "text-amber-700" :
-                       "text-blue-700"
+                       "text-orange-700"
                      )}>{alert.desc}</p>
                    </div>
                 </div>
               ))}
             </div>
-            <button className="w-full mt-4 text-sm font-semibold text-blue-600 hover:text-blue-700 py-1 transition-colors">
+            <button className="w-full mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700 py-1 transition-colors">
               View All Alerts
             </button>
           </div>
@@ -394,7 +394,7 @@ export function StudentsAttendance() {
                   required
                   value={assignFormData.routeId}
                   onChange={(e) => setAssignFormData({...assignFormData, routeId: e.target.value, routeStopId: ''})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                 >
                   <option value="">Select a Route</option>
                   {routes.map(route => (
@@ -412,7 +412,7 @@ export function StudentsAttendance() {
                     required
                     value={assignFormData.routeStopId}
                     onChange={(e) => setAssignFormData({...assignFormData, routeStopId: e.target.value})}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   >
                     <option value="">Select a Stop</option>
                     {routes.find(r => r.id === assignFormData.routeId)?.stops?.map((stop: any) => (
@@ -433,7 +433,7 @@ export function StudentsAttendance() {
                 <button 
                   type="submit"
                   disabled={isAssignSubmitting || !assignFormData.routeStopId}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
                 >
                   {isAssignSubmitting ? 'Assigning...' : 'Confirm Assignment'}
                 </button>
@@ -467,7 +467,7 @@ export function StudentsAttendance() {
                   required
                   value={formData.rfidTag}
                   onChange={(e) => setFormData({...formData, rfidTag: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. RFID-123456789"
                 />
               </div>
@@ -480,7 +480,7 @@ export function StudentsAttendance() {
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. John Doe"
                 />
               </div>
@@ -492,7 +492,7 @@ export function StudentsAttendance() {
                   type="text"
                   value={formData.grade}
                   onChange={(e) => setFormData({...formData, grade: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. 10th"
                 />
               </div>
@@ -505,7 +505,7 @@ export function StudentsAttendance() {
                   required
                   value={formData.parentName}
                   onChange={(e) => setFormData({...formData, parentName: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. Mr. Smith"
                 />
               </div>
@@ -518,7 +518,7 @@ export function StudentsAttendance() {
                   required
                   value={formData.parentEmail}
                   onChange={(e) => setFormData({...formData, parentEmail: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. alex.parent@example.com"
                 />
               </div>
@@ -534,7 +534,7 @@ export function StudentsAttendance() {
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
                 >
                   {isSubmitting ? 'Registering...' : 'Register Student'}
                 </button>
@@ -574,7 +574,7 @@ export function StudentsAttendance() {
               <div className="mt-6">
                 <button 
                   onClick={() => setCredentialsPopup(null)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
                 >
                   Done
                 </button>

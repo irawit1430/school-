@@ -103,7 +103,7 @@ export function DriversList() {
             setFormData({ name: '', email: '' });
             setIsModalOpen(true);
           }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 shadow-sm text-sm"
+          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 shadow-sm text-sm"
         >
           <User size={16} /> Add Driver
         </button>
@@ -178,7 +178,7 @@ export function DriversList() {
                   <td className="px-4 py-3 text-right">
                     <button 
                       onClick={() => handleOpenAssign(driver)}
-                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md transition-colors"
+                      className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
                     >
                       Assign Trip
                     </button>
@@ -211,7 +211,7 @@ export function DriversList() {
                   required
                   value={assignFormData.busId}
                   onChange={(e) => setAssignFormData({...assignFormData, busId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                 >
                   <option value="">Select a Bus</option>
                   {buses.map(bus => (
@@ -227,7 +227,7 @@ export function DriversList() {
                   required
                   value={assignFormData.routeId}
                   onChange={(e) => setAssignFormData({...assignFormData, routeId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                 >
                   <option value="">Select a Route</option>
                   {routes.map(route => (
@@ -246,7 +246,7 @@ export function DriversList() {
                 <button 
                   type="submit"
                   disabled={isAssignSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-70"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
                 >
                   {isAssignSubmitting ? 'Assigning...' : 'Confirm Assignment'}
                 </button>
@@ -278,7 +278,7 @@ export function DriversList() {
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. Raju Kumar"
                 />
               </div>
@@ -291,7 +291,7 @@ export function DriversList() {
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
                   placeholder="e.g. raju@yourfleet.com"
                 />
               </div>
@@ -306,7 +306,7 @@ export function DriversList() {
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors text-sm disabled:opacity-70"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
                 >
                   {isSubmitting ? 'Creating...' : 'Add Driver'}
                 </button>

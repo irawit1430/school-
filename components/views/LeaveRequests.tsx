@@ -109,7 +109,7 @@ export function LeaveRequests() {
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                     <div className="flex justify-center mb-2">
-                      <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      <div className="w-6 h-6 border-2 border-orange-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
                     Loading leaves...
                   </td>
@@ -134,7 +134,7 @@ export function LeaveRequests() {
                     <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">
+                          <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
                             {initials}
                           </div>
                           <div>
@@ -168,7 +168,7 @@ export function LeaveRequests() {
                             <>
                               <button 
                                 onClick={() => handleApprove(leave.id)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
                               >
                                 Approve
                               </button>
