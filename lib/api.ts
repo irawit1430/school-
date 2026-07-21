@@ -86,10 +86,7 @@ export const assignStudentToStop = async (data: { studentId: string, routeStopId
 };
 
 export const fetchStats = async () => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/stats`, {
+  const res = await fetch(`${API_BASE}/stats`, {
     headers: getHeaders(),
   });
   if (!res.ok) throw new Error('Failed to fetch stats');

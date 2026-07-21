@@ -87,7 +87,19 @@ export function Overview() {
   return (
     <div className="p-6 space-y-6">
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <MetricCard 
+          title="Total Students" 
+          value={loading ? '...' : stats?.totalStudents || 0}
+          icon={Users}
+          color="blue" 
+        />
+        <MetricCard 
+          title="Total Buses" 
+          value={loading ? '...' : stats?.totalBuses || 0}
+          icon={Bus}
+          color="blue" 
+        />
         <MetricCard 
           title="Total Routes" 
           value={loading ? '...' : stats?.totalRoutes || 0} 
@@ -95,19 +107,19 @@ export function Overview() {
           color="blue" 
         />
         <MetricCard 
-          title="Active Trips" 
-          value={loading ? '...' : stats?.activeTrips || 0} 
-          icon={Bus} 
+          title="Active Devices" 
+          value={loading ? '...' : stats?.activeDevices || 0}
+          icon={CheckCircle}
           color="emerald" 
         />
         <MetricCard 
-          title="Total Students Boarded" 
-          value={loading ? '...' : stats?.totalBoarded || 0} 
-          icon={Users} 
-          color="emerald" 
+          title="Offline Devices" 
+          value={loading ? '...' : stats?.offlineDevices || 0}
+          icon={AlertTriangle}
+          color="amber" 
         />
         <MetricCard 
-          title="Pending Leave Requests" 
+          title="Pending Leaves" 
           value={loading ? '...' : stats?.pendingLeaves || leaves.length || 0} 
           subtitle="Urgent"
           icon={CalendarDays} 

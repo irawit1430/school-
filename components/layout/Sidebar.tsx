@@ -1,5 +1,8 @@
+"use client";
+
 import React from 'react';
-import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 
 interface SidebarProps {
@@ -8,6 +11,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    localStorage.clear();
+    router.push('/login');
+  };
+
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: Bus },
     { id: 'map', label: 'Live Fleet Map', icon: Map },
