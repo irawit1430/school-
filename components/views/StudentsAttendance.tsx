@@ -104,9 +104,20 @@ export function StudentsAttendance() {
   // Determine actual display data
   const totalStudents = stats?.totalStudents ?? studentsData.length ?? 450;
   
+  // Pre-calculate attendance logs map to avoid O(n^2) lookup
+  const attendanceLogsMap = new Map();
+  if (attendanceLogs) {
+    for (const log of attendanceLogs) {
+      const sId = log.studentId || log.student?.id;
+      if (sId && !attendanceLogsMap.has(sId)) {
+        attendanceLogsMap.set(sId, log);
+      }
+    }
+  }
+
   // Calculate attendance status per student
   const displayStudents = studentsData.map(s => {
-    const todayLog = attendanceLogs.find(log => log.studentId === s.id || log.student?.id === s.id);
+    const todayLog = attendanceLogsMap.get(s.id);
     let status = 'Absent';
     let time = '--:--';
     if (todayLog) {
