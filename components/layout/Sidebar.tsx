@@ -1,7 +1,7 @@
 "use client";
 
 import React from 'react';
-import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut } from 'lucide-react';
+import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 
