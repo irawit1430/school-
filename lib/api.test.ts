@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, API_BASE } from './api';
+import { fetchBuses, createStudent, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -98,5 +98,60 @@ describe('fetchBuses', () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
     expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
     expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/buses`, expect.any(Object));
+  });
+});
+
+describe('createStudent', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  const studentData = {
+    rfidTag: '12345',
+    name: 'John Doe',
+    grade: '10',
+    parentEmail: 'parent@example.com',
+    parentName: 'Jane Doe',
+  };
+
+  it('should create a student successfully when schoolId is present', async () => {
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockResponse = { id: 'student-1', ...studentData };
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    const result = await createStudent(studentData);
+
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/students`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(studentData),
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+
+    await expect(createStudent(studentData)).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    await expect(createStudent(studentData)).rejects.toThrow('Failed to create student');
   });
 });
