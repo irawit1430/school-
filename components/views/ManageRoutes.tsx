@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { allRoutes as mockRoutes } from '@/lib/mock-data';
 import { fetchRoutes, createRoute, updateRoute, deleteRoute, createTrip, fetchBuses, fetchDrivers } from '@/lib/api';
 import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, MoreVertical, Map, Trash2, X, Users } from 'lucide-react';
@@ -118,6 +118,20 @@ export function ManageRoutes() {
   // Use real routes from the database
   const displayRoutes = routes;
 
+  const busesMap = useMemo(() => {
+    return buses.reduce((acc, bus) => {
+      acc[bus.id] = bus;
+      return acc;
+    }, {} as Record<string, any>);
+  }, [buses]);
+
+  const driversMap = useMemo(() => {
+    return drivers.reduce((acc, driver) => {
+      acc[driver.id] = driver;
+      return acc;
+    }, {} as Record<string, any>);
+  }, [drivers]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-end mb-6">
@@ -217,8 +231,8 @@ export function ManageRoutes() {
                 </tr>
               ) : displayRoutes.map((route: any) => {
                 const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
-                const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
-                const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
+                const assignedBus = latestTrip ? busesMap[latestTrip.busId] : null;
+                const assignedDriver = latestTrip ? driversMap[latestTrip.driverId] : null;
 
                 const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
                 const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
