@@ -52,7 +52,25 @@ export function LiveFleetMap() {
     };
   }, []);
 
+
+  const activeDriverByBusId = React.useMemo(() => {
+    const map = new Map();
+    drivers.forEach(d => {
+      if (d.driverTrips) {
+        d.driverTrips.forEach((t: any) => {
+          if (t.status === 'ON_SCHEDULE' || t.status === 'PLANNED') {
+            if (!map.has(t.busId)) {
+              map.set(t.busId, d);
+            }
+          }
+        });
+      }
+    });
+    return map;
+  }, [drivers]);
+
   const activeBusesCount = buses.filter(b => b.status === 'active').length;
+
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
@@ -165,9 +183,7 @@ export function LiveFleetMap() {
             const isDelayed = bus.status === 'delayed';
             const isActive = bus.status === 'active';
             
-            const activeDriver = drivers.find(d => 
-              d.driverTrips?.some((t: any) => t.busId === bus.id && (t.status === 'ON_SCHEDULE' || t.status === 'PLANNED'))
-            );
+            const activeDriver = activeDriverByBusId.get(bus.id);
             const resolvedDriverName = activeDriver?.name || (bus.driverName !== 'Unassigned' ? bus.driverName : null) || bus.driver?.user?.name || 'Unassigned';
             
             return (
