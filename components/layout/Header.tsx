@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Bus, Users, Route } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 
