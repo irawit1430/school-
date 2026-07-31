@@ -23,8 +23,7 @@ export default function LoginPage() {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Login failed details:', errorText);
+        console.error('Login failed with status:', response.status);
         throw new Error(`Login failed: ${response.status}`);
       }
 
