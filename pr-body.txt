@@ -1,0 +1,9 @@
+🎯 **What:** The `fetchBuses` API wrapper function in `lib/api.ts` was missing tests, creating a testing gap for this functionality.
+
+📊 **Coverage:** The new tests in `lib/api.test.ts` now cover:
+- Successful fetching of buses when `schoolId` is present in user's localStorage
+- Error throwing when `schoolId` is missing
+- Error throwing when the `fetch` response is not ok
+- Successful fetching for a `SUPER_ADMIN` user who needs an additional API call to get a school ID
+
+✨ **Result:** Test coverage for `lib/api.ts` has improved, increasing reliability by ensuring regressions are caught if the API logic or dependent localStorage keys change.
