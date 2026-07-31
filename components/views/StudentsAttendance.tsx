@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { students as mockStudents, attendanceData as mockAttendanceData, studentAlerts } from '@/lib/mock-data';
+import { students as mockStudents, studentAlerts } from '@/lib/mock-data';
 import { fetchStudents, fetchTodayAttendance, createStudent, fetchStats, fetchRoutes, assignStudentToStop } from '@/lib/api';
 import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle, MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
