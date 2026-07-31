@@ -1,9 +1,3 @@
-🎯 **What:** The `fetchBuses` API wrapper function in `lib/api.ts` was missing tests, creating a testing gap for this functionality.
-
-📊 **Coverage:** The new tests in `lib/api.test.ts` now cover:
-- Successful fetching of buses when `schoolId` is present in user's localStorage
-- Error throwing when `schoolId` is missing
-- Error throwing when the `fetch` response is not ok
-- Successful fetching for a `SUPER_ADMIN` user who needs an additional API call to get a school ID
-
-✨ **Result:** Test coverage for `lib/api.ts` has improved, increasing reliability by ensuring regressions are caught if the API logic or dependent localStorage keys change.
+🎯 **What:** Added comprehensive unit tests for the `cn` utility function (`lib/utils.ts`) to ensure it behaves as expected.
+📊 **Coverage:** Covered simple string merges, conditional class evaluations, tailwind overriding logic via tailwind-merge, handling falsy inputs (null, undefined, empty strings), array inputs, and object inputs with condition evaluations.
+✨ **Result:** Enhanced the overall reliability and test coverage of the utility function that drives style merging across the frontend components, confirming deterministic outputs and preventing regression.
