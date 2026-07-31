@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchDrivers, createDriver, fetchBuses, fetchRoutes, createTrip } from '@/lib/api';
-import { User, Mail, Bus, Clock, MoreVertical, X, CheckCircle, Copy } from 'lucide-react';
+import { User, Mail, Bus, Clock, X, CheckCircle, Copy } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export function DriversList() {
