@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { students as mockStudents, studentAlerts } from '@/lib/mock-data';
 import { fetchStudents, fetchTodayAttendance, createStudent, fetchStats, fetchRoutes, assignStudentToStop } from '@/lib/api';
-import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle, MapPin } from 'lucide-react';
+import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
