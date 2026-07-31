@@ -25,9 +25,6 @@ export function LiveFleetMap() {
     // Socket.io connection
     const socket = io("https://gps-backend-jzd7.onrender.com");
 
-    socket.on('connect', () => {
-      console.log('Connected to fleet socket for Live Map');
-    });
 
     // Listen to real-time location updates from hardware telemetry
     socket.on('location_update', (data: any) => {
