@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchLeaves, approveLeave, rejectLeave } from '@/lib/api';
-import { CheckCircle, XCircle, Clock, Filter, Download, User, Calendar, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export function LeaveRequests() {
