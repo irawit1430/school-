@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers } from '@/lib/api';
-import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
+import { Bus, Map as MapIcon, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { metrics as mockMetrics, activeRoutes as mockActiveRoutes } from '@/lib/mock-data';
 
@@ -105,7 +105,7 @@ export function Overview() {
         <MetricCard 
           title="Total Routes" 
           value={loading ? '...' : stats?.totalRoutes || 0} 
-          icon={Map} 
+          icon={MapIcon}
           color="blue" 
         />
         <MetricCard 
@@ -134,7 +134,7 @@ export function Overview() {
         <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Map size={18} className="text-orange-600" /> Live Fleet Map
+              <MapIcon size={18} className="text-orange-600" /> Live Fleet Map
             </h3>
             <div className="flex gap-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded">Real-time</span>
