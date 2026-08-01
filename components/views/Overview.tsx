@@ -70,9 +70,11 @@ export function Overview() {
     rawId: leave.id
   }));
 
+  const driverMap = new Map(drivers.map(d => [d.id, d]));
+
   const activeTripsList = routes.flatMap(r => {
     return (r.trips || []).filter((t: any) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').map((t: any) => {
-      const assignedDriver = drivers.find(d => d.id === t.driverId);
+      const assignedDriver = driverMap.get(t.driverId);
       return {
         id: t.id,
         name: r.name,
