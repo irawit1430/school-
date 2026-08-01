@@ -4,6 +4,83 @@ import { fetchLeaves, approveLeave, rejectLeave } from '@/lib/api';
 import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 
+
+const StatusBadge = ({ status }: { status: string }) => {
+  switch (status?.toUpperCase()) {
+    case 'APPROVED':
+      return <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><CheckCircle size={12} /> Approved</span>;
+    case 'REJECTED':
+      return <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><XCircle size={12} /> Rejected</span>;
+    default:
+      return <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><Clock size={12} /> Pending</span>;
+  }
+};
+
+const LeaveRow = ({ leave, handleApprove, handleReject }: { leave: any, handleApprove: (id: string) => void, handleReject: (id: string) => void }) => {
+  const studentName = leave.student?.name || 'Unknown Student';
+  const initials = studentName.substring(0, 2).toUpperCase();
+  const startDate = new Date(leave.startDate).toLocaleDateString();
+  const endDate = new Date(leave.endDate).toLocaleDateString();
+  const isPending = leave.status?.toUpperCase() === 'PENDING';
+
+  return (
+    <tr className="hover:bg-slate-50/50 transition-colors">
+      <td className="px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
+            {initials}
+          </div>
+          <div>
+            <p className="font-bold text-slate-900">{studentName}</p>
+            <p className="text-xs text-slate-500 font-medium">RFID: {leave.student?.rfidTag || 'N/A'}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+            <Calendar size={14} className="text-slate-400" />
+            {startDate}
+          </div>
+          {startDate !== endDate && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <span className="text-slate-300 ml-1">to</span> {endDate}
+            </div>
+          )}
+        </div>
+      </td>
+      <td className="px-6 py-4">
+        <p className="text-sm text-slate-700 max-w-xs truncate" title={leave.reason}>{leave.reason}</p>
+      </td>
+      <td className="px-6 py-4">
+        <StatusBadge status={leave.status} />
+      </td>
+      <td className="px-6 py-4">
+        <div className="flex items-center justify-end gap-2">
+          {isPending ? (
+            <>
+              <button
+                onClick={() => handleApprove(leave.id)}
+                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => handleReject(leave.id)}
+                className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+              >
+                Reject
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-slate-400 font-medium italic">Processed</span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
 export function LeaveRequests() {
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,16 +125,6 @@ export function LeaveRequests() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status?.toUpperCase()) {
-      case 'APPROVED':
-        return <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><CheckCircle size={12} /> Approved</span>;
-      case 'REJECTED':
-        return <span className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><XCircle size={12} /> Rejected</span>;
-      default:
-        return <span className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 w-max"><Clock size={12} /> Pending</span>;
-    }
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -123,70 +190,14 @@ export function LeaveRequests() {
                   </td>
                 </tr>
               ) : (
-                leaves.map((leave) => {
-                  const studentName = leave.student?.name || 'Unknown Student';
-                  const initials = studentName.substring(0, 2).toUpperCase();
-                  const startDate = new Date(leave.startDate).toLocaleDateString();
-                  const endDate = new Date(leave.endDate).toLocaleDateString();
-                  const isPending = leave.status?.toUpperCase() === 'PENDING';
-                  
-                  return (
-                    <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center font-bold text-xs">
-                            {initials}
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-900">{studentName}</p>
-                            <p className="text-xs text-slate-500 font-medium">RFID: {leave.student?.rfidTag || 'N/A'}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                            <Calendar size={14} className="text-slate-400" />
-                            {startDate}
-                          </div>
-                          {startDate !== endDate && (
-                            <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                              <span className="text-slate-300 ml-1">to</span> {endDate}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-700 max-w-xs truncate" title={leave.reason}>{leave.reason}</p>
-                      </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(leave.status)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          {isPending ? (
-                            <>
-                              <button 
-                                onClick={() => handleApprove(leave.id)}
-                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                              >
-                                Approve
-                              </button>
-                              <button 
-                                onClick={() => handleReject(leave.id)}
-                                className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                              >
-                                Reject
-                              </button>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-400 font-medium italic">Processed</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                leaves.map((leave) => (
+                  <LeaveRow
+                    key={leave.id}
+                    leave={leave}
+                    handleApprove={handleApprove}
+                    handleReject={handleReject}
+                  />
+                ))
               )}
             </tbody>
           </table>
