@@ -1,3 +1,3 @@
-🎯 **What:** Added comprehensive unit tests for the `cn` utility function (`lib/utils.ts`) to ensure it behaves as expected.
-📊 **Coverage:** Covered simple string merges, conditional class evaluations, tailwind overriding logic via tailwind-merge, handling falsy inputs (null, undefined, empty strings), array inputs, and object inputs with condition evaluations.
-✨ **Result:** Enhanced the overall reliability and test coverage of the utility function that drives style merging across the frontend components, confirming deterministic outputs and preventing regression.
+🎯 **What:** Tested error handling in the `loadData` function of the `StudentsAttendance` component.
+📊 **Coverage:** Mocked `Promise.all` rejections and ensured errors are properly caught and logged.
+✨ **Result:** Improved test coverage and validated the application behaves gracefully upon API failures.
