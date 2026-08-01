@@ -49,9 +49,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
     // Populate user details from local storage
     try {
       const userStr = localStorage.getItem('user');
-      const storedToken = localStorage.getItem('token');
-      if (storedToken) setToken(storedToken);
-      if (userStr) {
+            if (userStr) {
         const user = JSON.parse(userStr);
         setUserName(user.name || user.email || 'Admin User');
         setUserRole(user.role || 'Fleet Manager');
@@ -75,13 +73,10 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
 
   // Fetch notifications
   const fetchNotifications = async () => {
-    if (!token) return;
+
     try {
-      const response = await fetch('https://gps-backend-jzd7.onrender.com/api/notifications', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await fetch('/api/proxy/notifications', {
+        });
       if (response.ok) {
         const data = await response.json();
         setNotifications(data);
@@ -95,7 +90,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
     fetchNotifications();
     const notifTimer = setInterval(fetchNotifications, 60000); // Poll every minute
     return () => clearInterval(notifTimer);
-  }, [token]);
+  }, []);
 
   // Click outside handlers
   useEffect(() => {
@@ -121,11 +116,8 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
       
       setIsSearching(true);
       try {
-        const response = await fetch(`https://gps-backend-jzd7.onrender.com/api/search?q=${encodeURIComponent(searchQuery)}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        const response = await fetch(`/api/proxy/search?q=${encodeURIComponent(searchQuery)}`, {
+          });
         if (response.ok) {
           const data = await response.json();
           setSearchResults(data.results || data || []);
@@ -141,22 +133,24 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
 
     const debounceTimer = setTimeout(performSearch, 300);
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery, token]);
+  }, [searchQuery]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed:', e);
+    }
     localStorage.clear();
     router.push('/login');
   };
 
   const markAllAsRead = async () => {
-    if (!token) return;
+
     try {
-      await fetch('https://gps-backend-jzd7.onrender.com/api/notifications/mark-read', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      await fetch('/api/proxy/notifications/mark-read', {
+        method: 'POST'
+        });
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     } catch (error) {
       console.error('Failed to mark all as read:', error);
@@ -165,14 +159,11 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
 
   const markAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!token) return;
+
     try {
-      await fetch(`https://gps-backend-jzd7.onrender.com/api/notifications/${id}/read`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      await fetch(`/api/proxy/notifications/${id}/read`, {
+        method: 'POST'
+        });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     } catch (error) {
       console.error('Failed to mark as read:', error);

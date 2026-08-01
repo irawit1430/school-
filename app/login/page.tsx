@@ -14,7 +14,7 @@ export default function LoginPage() {
     setIsLoading(true);
     
     try {
-      const response = await fetch('https://gps-backend-jzd7.onrender.com/api/auth/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -29,7 +29,7 @@ export default function LoginPage() {
 
       const data = await response.json();
       
-      localStorage.setItem('token', data.token);
+
       localStorage.setItem('user', JSON.stringify(data.user));
       
       router.push('/');

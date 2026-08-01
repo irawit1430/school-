@@ -1,10 +1,8 @@
-export const API_BASE = 'https://gps-backend-jzd7.onrender.com/api';
+export const API_BASE = '/api/proxy';
 
 const getHeaders = () => {
-  const token = localStorage.getItem('token');
   return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+    'Content-Type': 'application/json'
   };
 };
 

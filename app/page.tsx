@@ -17,10 +17,10 @@ export default function Dashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+
     const user = localStorage.getItem('user');
     
-    if (!token || !user) {
+    if (!user) {
       router.push('/login');
     } else {
       setTimeout(() => {

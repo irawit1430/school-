@@ -44,10 +44,10 @@ describe('fetchBuses', () => {
 
     // Assert
     expect(result).toEqual(mockBuses);
-    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/buses`, {
+    expect(global.fetch).toHaveBeenCalledWith('/api/proxy/schools/school-123/buses', {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-token',
+
       },
     });
   });
@@ -96,8 +96,8 @@ describe('fetchBuses', () => {
     // Assert
     expect(result).toEqual(mockBuses);
     expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
-    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/buses`, expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/proxy/schools', expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/proxy/schools/super-school-1/buses', expect.any(Object));
   });
 });
 
@@ -123,10 +123,10 @@ describe('fetchRoutes', () => {
 
     // Assert
     expect(result).toEqual(mockRoutes);
-    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/routes`, {
+    expect(global.fetch).toHaveBeenCalledWith('/api/proxy/schools/school-123/routes', {
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-token',
+
       },
     });
   });
@@ -175,7 +175,7 @@ describe('fetchRoutes', () => {
     // Assert
     expect(result).toEqual(mockRoutes);
     expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
-    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/routes`, expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/proxy/schools', expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/proxy/schools/super-school-1/routes', expect.any(Object));
   });
 });
