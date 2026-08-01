@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { allRoutes as mockRoutes } from '@/lib/mock-data';
+
 import { fetchRoutes, createRoute, updateRoute, deleteRoute, createTrip, fetchBuses, fetchDrivers } from '@/lib/api';
 import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, Map, Trash2, X, Users } from 'lucide-react';
 import { clsx } from 'clsx';
