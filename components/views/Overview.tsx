@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers } from '@/lib/api';
 import { Bus, Map as MapIcon, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
-import { metrics as mockMetrics, activeRoutes as mockActiveRoutes } from '@/lib/mock-data';
+
 
 export function Overview() {
   const [buses, setBuses] = useState<any[]>([]);

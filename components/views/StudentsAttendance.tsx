@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { students as mockStudents, studentAlerts } from '@/lib/mock-data';
+
 import { fetchStudents, fetchTodayAttendance, createStudent, fetchStats, fetchRoutes, assignStudentToStop } from '@/lib/api';
 import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -330,39 +330,6 @@ export function StudentsAttendance() {
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-900 mb-4">Recent Alerts</h3>
             <div className="space-y-3">
-              {studentAlerts.map((alert) => (
-                <div key={alert.id} className={clsx(
-                  "p-3 rounded-lg border flex gap-3",
-                  alert.type === 'error' ? "bg-red-50/50 border-red-100" :
-                  alert.type === 'warning' ? "bg-amber-50/50 border-amber-100" :
-                  "bg-orange-50/50 border-orange-100"
-                )}>
-                   <div className={clsx(
-                     "mt-0.5",
-                     alert.type === 'error' ? "text-red-500" :
-                     alert.type === 'warning' ? "text-amber-500" :
-                     "text-orange-500"
-                   )}>
-                     {alert.type === 'error' ? <AlertTriangle size={16} /> :
-                      alert.type === 'warning' ? <Clock size={16} /> :
-                      <Info size={16} />}
-                   </div>
-                   <div>
-                     <p className={clsx(
-                       "text-sm font-bold",
-                       alert.type === 'error' ? "text-red-900" :
-                       alert.type === 'warning' ? "text-amber-900" :
-                       "text-orange-900"
-                     )}>{alert.title}</p>
-                     <p className={clsx(
-                       "text-xs font-medium mt-0.5",
-                       alert.type === 'error' ? "text-red-700" :
-                       alert.type === 'warning' ? "text-amber-700" :
-                       "text-orange-700"
-                     )}>{alert.desc}</p>
-                   </div>
-                </div>
-              ))}
             </div>
             <button className="w-full mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700 py-1 transition-colors">
               View All Alerts
