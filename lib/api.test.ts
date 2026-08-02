@@ -267,6 +267,29 @@ describe('assignStudentToStop', () => {
     // Assert
     expect(result).toEqual({ success: true });
   });
+
+  it('should fallback to { success: true, text } when text is not valid JSON', async () => {
+    // Setup
+    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      text: async () => '<html>Not JSON</html>',
+    } as Response);
+
+    // Execute
+    const result = await assignStudentToStop(mockData);
+
+    // Assert
+    expect(result).toEqual({ success: true, text: '<html>Not JSON</html>' });
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/student-route-mappings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(mockData),
+    });
+  });
 });
 
 describe('createStudent', () => {
