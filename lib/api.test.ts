@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -266,5 +266,64 @@ describe('assignStudentToStop', () => {
 
     // Assert
     expect(result).toEqual({ success: true });
+  });
+});
+
+describe('createStudent', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should create a student successfully when schoolId is present', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe', grade: '10' };
+    const mockResponse = { id: 'student-1', ...mockStudentData };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    // Execute
+    const result = await createStudent(mockStudentData);
+
+    // Assert
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/students`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(mockStudentData),
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+
+    const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe' };
+
+    // Execute & Assert
+    await expect(createStudent(mockStudentData)).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe' };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
   });
 });
