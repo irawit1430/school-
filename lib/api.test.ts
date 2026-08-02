@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, fetchLeaves, assignStudentToStop, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -179,6 +179,134 @@ describe('fetchRoutes', () => {
     expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/routes`, expect.any(Object));
   });
 });
+
+describe('fetchLeaves', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should fetch leaves successfully when schoolId is present in user localStorage (no status)', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockLeaves = [{ id: 'leave-1', reason: 'Sick' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockLeaves,
+    } as Response);
+
+    // Execute
+    const result = await fetchLeaves();
+
+    // Assert
+    expect(result).toEqual(mockLeaves);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/leaves`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+    });
+  });
+
+  it('should fetch leaves successfully with specific status', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockLeaves = [{ id: 'leave-2', reason: 'Vacation', status: 'pending' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockLeaves,
+    } as Response);
+
+    // Execute
+    const result = await fetchLeaves('pending');
+
+    // Assert
+    expect(result).toEqual(mockLeaves);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/leaves?status=pending`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+    });
+  });
+
+  it('should fetch leaves successfully without status param when status is "all"', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockLeaves = [{ id: 'leave-3', reason: 'Sick' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockLeaves,
+    } as Response);
+
+    // Execute
+    const result = await fetchLeaves('all');
+
+    // Assert
+    expect(result).toEqual(mockLeaves);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/leaves`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+
+    // Execute & Assert
+    await expect(fetchLeaves()).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(fetchLeaves()).rejects.toThrow('Failed to fetch leaves');
+  });
+
+  it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'SUPER_ADMIN' }));
+
+    // First fetch for school ID
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'super-school-1' }],
+    } as Response);
+
+    // Second fetch for leaves
+    const mockLeaves = [{ id: 'leave-4', reason: 'Personal' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockLeaves,
+    } as Response);
+
+    // Execute
+    const result = await fetchLeaves();
+
+    // Assert
+    expect(result).toEqual(mockLeaves);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/leaves`, expect.any(Object));
+  });
+});
+
 
 describe('assignStudentToStop', () => {
   beforeEach(() => {
