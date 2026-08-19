@@ -1,5 +1,10 @@
 export const API_BASE = 'https://gps-backend-jzd7.onrender.com/api';
 
+export const clearSchoolIdCache = () => {
+  cachedSchoolId = null;
+  schoolIdPromise = null;
+};
+
 const getHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -7,6 +12,9 @@ const getHeaders = () => {
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
 };
+
+let cachedSchoolId: string | null = null;
+let schoolIdPromise: Promise<string | null> | null = null;
 
 const getSchoolId = async () => {
   const user = localStorage.getItem('user');
@@ -18,14 +26,27 @@ const getSchoolId = async () => {
       }
       
       if (parsed.role === 'SUPER_ADMIN') {
-         const res = await fetch(`${API_BASE}/schools`, { headers: getHeaders() });
-         if (res.ok) {
-           const responseData = await res.json();
-           const schools = Array.isArray(responseData) ? responseData : responseData.data;
-           if (schools && schools.length > 0) {
-             return schools[0].id;
+         if (cachedSchoolId) return cachedSchoolId;
+         if (schoolIdPromise) return schoolIdPromise;
+
+         schoolIdPromise = (async () => {
+           try {
+             const res = await fetch(`${API_BASE}/schools`, { headers: getHeaders() });
+             if (res.ok) {
+               const responseData = await res.json();
+               const schools = Array.isArray(responseData) ? responseData : responseData.data;
+               if (schools && schools.length > 0) {
+                 cachedSchoolId = schools[0].id;
+                 return cachedSchoolId;
+               }
+             }
+           } finally {
+             schoolIdPromise = null;
            }
-         }
+           return null;
+         })();
+
+         return schoolIdPromise;
       }
     } catch (e) {
       return null;
