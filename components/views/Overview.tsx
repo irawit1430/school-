@@ -1,16 +1,52 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers } from '@/lib/api';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
+import DynamicMap from '@/components/map/DynamicMap';
 import { clsx } from 'clsx';
-import { metrics as mockMetrics, activeRoutes as mockActiveRoutes, recentLeaves as mockRecentLeaves } from '@/lib/mock-data';
+import Link from 'next/link';
+
+// --- TypeScript Interfaces add kiye gaye hain ---
+interface Student { name: string; }
+interface Leave {
+  id: string;
+  student?: Student;
+  startDate: string;
+  reason: string;
+}
+interface Trip {
+  id: string;
+  status: string;
+  driverId: string;
+  progressPercent?: number;
+  currentEtaMessage?: string;
+}
+interface RouteData {
+  id: string;
+  name: string;
+  trips?: Trip[];
+}
+interface Driver {
+  id: string;
+  name: string;
+}
+interface Stats {
+  totalStudents?: number;
+  totalBuses?: number;
+  totalRoutes?: number;
+  activeDevices?: number;
+  offlineDevices?: number;
+  pendingLeaves?: number;
+}
+
+import toast from 'react-hot-toast';
 
 export function Overview() {
-  const [buses, setBuses] = useState<any[]>([]);
-  const [leaves, setLeaves] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [routes, setRoutes] = useState<any[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
+  const [buses, setBuses] = useState<any[]>([]); // Add Bus interface later if needed
+  const [leaves, setLeaves] = useState<Leave[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [routes, setRoutes] = useState<RouteData[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +66,7 @@ export function Overview() {
         setDrivers(driversData);
       } catch (error) {
         console.error('Failed to load overview data:', error);
+        toast.error('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
@@ -41,9 +78,10 @@ export function Overview() {
     try {
       await approveLeave(id);
       setLeaves(prev => prev.filter(l => l.id !== id));
+      toast.success('Leave approved successfully');
     } catch (e) {
       console.error(e);
-      alert('Failed to approve leave');
+      toast.error('Failed to approve leave');
     }
   };
 
@@ -51,27 +89,29 @@ export function Overview() {
     try {
       await rejectLeave(id);
       setLeaves(prev => prev.filter(l => l.id !== id));
+      toast.success('Leave rejected successfully');
     } catch (e) {
       console.error(e);
-      alert('Failed to reject leave');
+      toast.error('Failed to reject leave');
     }
   };
 
   const activeBusesCount = buses.filter(b => b.status === 'active').length;
   
-  // Transform leaves from API to match UI
-  const displayLeaves = leaves.slice(0, 5).map(leave => ({
-    id: leave.id,
-    student: leave.student?.name || 'Unknown',
-    initials: (leave.student?.name || 'U').substring(0, 2).toUpperCase(),
-    date: new Date(leave.startDate).toLocaleDateString(),
-    reason: leave.reason,
-    color: "bg-orange-100 text-orange-700",
-    rawId: leave.id
-  }));
+  // Transform leaves from API to match UI (useMemo added for performance)
+  const displayLeaves = useMemo(() => 
+    leaves.slice(0, 5).map(leave => ({
+      id: leave.id,
+      student: leave.student?.name || 'Unknown',
+      initials: (leave.student?.name || 'U').substring(0, 2).toUpperCase(),
+      date: new Date(leave.startDate).toLocaleDateString(),
+      reason: leave.reason,
+      color: "bg-orange-100 text-orange-700",
+      rawId: leave.id
+    })), [leaves]);
 
-  const activeTripsList = routes.flatMap(r => {
-    return (r.trips || []).filter((t: any) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').map((t: any) => {
+  const activeTripsList = useMemo(() => routes.flatMap(r => {
+    return (r.trips || []).filter((t: Trip) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').map((t: Trip) => {
       const assignedDriver = drivers.find(d => d.id === t.driverId);
       return {
         id: t.id,
@@ -82,7 +122,7 @@ export function Overview() {
         eta: t.currentEtaMessage || (t.status === 'DELAYED' ? 'Delayed' : 'On Schedule')
       };
     });
-  });
+  }), [routes, drivers]);
 
   return (
     <div className="p-6 space-y-6">
@@ -90,37 +130,37 @@ export function Overview() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <MetricCard 
           title="Total Students" 
-          value={loading ? '...' : stats?.totalStudents || 0}
+          value={loading ? '...' : stats?.totalStudents ?? '—'}
           icon={Users}
           color="blue" 
         />
         <MetricCard 
           title="Total Buses" 
-          value={loading ? '...' : stats?.totalBuses || 0}
+          value={loading ? '...' : stats?.totalBuses ?? '—'}
           icon={Bus}
           color="blue" 
         />
         <MetricCard 
           title="Total Routes" 
-          value={loading ? '...' : stats?.totalRoutes || 0} 
+          value={loading ? '...' : stats?.totalRoutes ?? '—'} 
           icon={Map} 
           color="blue" 
         />
         <MetricCard 
           title="Active Devices" 
-          value={loading ? '...' : stats?.activeDevices || 0}
+          value={loading ? '...' : stats?.activeDevices ?? '—'}
           icon={CheckCircle}
           color="emerald" 
         />
         <MetricCard 
           title="Offline Devices" 
-          value={loading ? '...' : stats?.offlineDevices || 0}
+          value={loading ? '...' : stats?.offlineDevices ?? '—'}
           icon={AlertTriangle}
           color="amber" 
         />
         <MetricCard 
           title="Pending Leaves" 
-          value={loading ? '...' : stats?.pendingLeaves || leaves.length || 0} 
+          value={loading ? '...' : stats?.pendingLeaves ?? leaves.length ?? '—'} 
           subtitle="Urgent"
           icon={CalendarDays} 
           color="slate" 
@@ -139,36 +179,13 @@ export function Overview() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 py-0.5">Heatmap</span>
             </div>
           </div>
-          <div className="flex-1 bg-orange-50/50 p-6 flex items-center justify-center relative min-h-[400px]">
-             {/* Map Placeholder Graphic */}
-             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#3b82f6_1px,transparent_1px)] [background-size:16px_16px]"></div>
-             
-             {/* Bus 4 Marker */}
-             <div className="absolute top-1/4 left-1/4 flex flex-col items-center">
-               <div className="bg-white px-3 py-1.5 rounded shadow-md border border-slate-200 mb-1 z-10">
-                 <p className="text-xs font-bold text-slate-900">Bus 4</p>
-                 <p className="text-[10px] text-slate-500">Speed: 45 km/h</p>
-               </div>
-               <div className="w-8 h-8 bg-orange-600 rounded-full text-white flex items-center justify-center shadow-lg border-2 border-white relative z-10">
-                 <Bus size={14} />
-               </div>
-             </div>
-
-             {/* Bus 7 Marker */}
-             <div className="absolute top-1/2 right-1/3 flex flex-col items-center">
-               <div className="bg-white px-3 py-1.5 rounded shadow-md border border-slate-200 mb-1 z-10">
-                 <p className="text-xs font-bold text-slate-900">Bus 7</p>
-                 <p className="text-[10px] text-slate-500">Speed: 52 km/h</p>
-               </div>
-               <div className="w-8 h-8 bg-emerald-500 rounded-full text-white flex items-center justify-center shadow-lg border-2 border-white relative z-10">
-                 <Bus size={14} />
-               </div>
-             </div>
-
-             <div className="absolute bottom-4 left-4 flex gap-3 text-xs font-medium bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-200">
-               <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> On Schedule</span>
-               <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Delayed</span>
-             </div>
+          <div className="flex-1 p-0 relative min-h-[400px]">
+             <DynamicMap buses={buses} zoom={11} className="absolute inset-0 z-0 h-full w-full" />
+          </div>
+          
+          <div className="absolute bottom-4 left-4 flex gap-3 text-xs font-medium bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-200">
+            <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> On Schedule</span>
+            <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Delayed</span>
           </div>
         </div>
 
@@ -211,9 +228,12 @@ export function Overview() {
               ))}
             </div>
             
-            <button className="w-full mt-4 text-xs font-bold text-orange-600 hover:text-orange-700 py-1.5 rounded-md transition-colors">
+            <Link 
+              href="/routes"
+              className="block text-center w-full mt-4 text-xs font-bold text-orange-600 hover:text-orange-700 py-1.5 rounded-md transition-colors"
+            >
               View All Routes
-            </button>
+            </Link>
           </div>
         </div>
       </div>
@@ -280,7 +300,12 @@ export function Overview() {
           </table>
         </div>
         <div className="p-3 border-t border-slate-100 text-center">
-           <button className="text-[11px] font-bold text-orange-600 hover:text-orange-700 uppercase tracking-wider">View All Applications</button>
+           <Link 
+             href="/leaves"
+             className="inline-block text-[11px] font-bold text-orange-600 hover:text-orange-700 uppercase tracking-wider"
+           >
+             View All Applications
+           </Link>
         </div>
       </div>
     </div>

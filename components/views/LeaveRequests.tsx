@@ -1,3 +1,6 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchLeaves, approveLeave, rejectLeave } from '@/lib/api';

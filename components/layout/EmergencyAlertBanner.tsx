@@ -1,23 +1,16 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { connectSocket, getUser } from '@/lib/api';
 
 export function EmergencyAlertBanner() {
   const [alerts, setAlerts] = useState<any[]>([]);
 
   useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return;
-    
-    let user;
-    try {
-      user = JSON.parse(userStr);
-    } catch (e) {
-      return;
-    }
+    const user = getUser();
+    if (!user) return;
 
-    const socket = io("https://gps-backend-jzd7.onrender.com");
+    const socket = connectSocket();
     
     socket.on('connect', () => {
       console.log('Emergency Alert Banner connected to socket');

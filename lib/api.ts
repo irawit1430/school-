@@ -1,227 +1,325 @@
-export const API_BASE = 'https://gps-backend-jzd7.onrender.com/api';
+import { CONFIG } from './config';
+import { io, Socket } from 'socket.io-client';
 
-const getHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
-};
+const API_BASE = `${CONFIG.API_BASE_URL}/api`;
 
-const getSchoolId = async () => {
-  const user = localStorage.getItem('user');
-  if (user) {
-    try {
-      const parsed = JSON.parse(user);
-      if (parsed.schoolId) {
-        return parsed.schoolId;
-      }
-      
-      if (parsed.role === 'SUPER_ADMIN') {
-         const res = await fetch(`${API_BASE}/schools`, { headers: getHeaders() });
-         if (res.ok) {
-           const responseData = await res.json();
-           const schools = Array.isArray(responseData) ? responseData : responseData.data;
-           if (schools && schools.length > 0) {
-             return schools[0].id;
-           }
-         }
-      }
-    } catch (e) {
-      return null;
-    }
-  }
+// ─── Token / User helpers ──────────────────────────────────
+export const getToken = (): string | null => {
+  if (typeof window !== 'undefined') return localStorage.getItem('token');
   return null;
 };
 
+export const setToken = async (t: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('token', t);
+    // Cookie API ko call karein
+    await fetch('/api/auth/cookie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: t, action: 'set' })
+    });
+  }
+};
+
+export const getUser = (): any => {
+  if (typeof window === 'undefined') return null;
+  const u = localStorage.getItem(CONFIG.USER_STORAGE_KEY);
+  return u ? JSON.parse(u) : null;
+};
+
+export const setUser = (u: any) =>
+  localStorage.setItem(CONFIG.USER_STORAGE_KEY, JSON.stringify(u));
+
+export const clearAuth = async () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('token');
+    localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
+    await fetch('/api/auth/cookie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear' })
+    });
+  }
+};
+
+// ─── Error class with status + validation issues ───────────
+export class ApiError extends Error {
+  status: number;
+  issues?: Array<{ path: string; message: string }>;
+
+  constructor(message: string, status: number, issues?: Array<{ path: string; message: string }>) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.issues = issues;
+  }
+}
+
+// ─── Core HTTP wrapper with global error handling ──────────
+const getHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+};
+
+async function api<T = any>(
+  path: string,
+  { method = 'GET', body, auth = true }: { method?: string; body?: any; auth?: boolean } = {}
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (auth) {
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err: any) {
+    console.warn(`[API Network Error] ${method} ${path}:`, err?.message || err);
+    throw new ApiError(err?.message || 'Network request failed', 0);
+  }
+
+  // ── Global auth handling: 401 → clear & redirect ──
+  if (res.status === 401) {
+    clearAuth();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    throw new ApiError('Session expired', 401);
+  }
+
+  // ── Rate limiting: 429 ──
+  if (res.status === 429) {
+    throw new ApiError('Too many attempts, please wait a minute.', 429);
+  }
+
+  // ── Cross-tenant: 403 ──
+  if (res.status === 403) {
+    throw new ApiError('Access denied. You do not have permission for this resource.', 403);
+  }
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    // 400 with validation issues
+    const err = new ApiError(
+      data.error || `HTTP ${res.status}`,
+      res.status,
+      data.issues
+    );
+    throw err;
+  }
+
+  return data as T;
+}
+
+// ─── SchoolId helper ───────────────────────────────────────
+const getSchoolId = async (): Promise<string | null> => {
+  const user = getUser();
+  if (!user) return null;
+
+  if (user.schoolId) return user.schoolId;
+
+  // SUPER_ADMIN fallback — fetch first school
+  if (user.role === 'SUPER_ADMIN') {
+    try {
+      const responseData = await api<any>('/schools');
+      const schools = Array.isArray(responseData) ? responseData : responseData.data;
+      if (schools && schools.length > 0) return schools[0].id;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
+// ─── Route & Stop Management (OSM) ─────────────────────────
+
+export const createRoute = (schoolId: string, body: any) =>
+  api(`/schools/${schoolId}/routes`, { method: 'POST', body });
+
+export const updateRoute = (routeId: string, body: any) =>
+  api(`/routes/${routeId}`, { method: 'PUT', body });
+
+export const deleteRoute = (routeId: string) =>
+  api(`/routes/${routeId}`, { method: 'DELETE' });
+
+export const createStop = (routeId: string, body: any) =>
+  api(`/routes/${routeId}/stops`, { method: 'POST', body });
+
+export const updateStop = (routeId: string, stopId: string, body: any) =>
+  api(`/routes/${routeId}/stops/${stopId}`, { method: 'PUT', body });
+
+export const deleteStop = (routeId: string, stopId: string) =>
+  api(`/routes/${routeId}/stops/${stopId}`, { method: 'DELETE' });
+
+export const reorderStops = (routeId: string, items: {id: string; orderIdx: number}[]) =>
+  api(`/routes/${routeId}/stops/reorder`, { method: 'PUT', body: items });
+
+// ─── Auth ──────────────────────────────────────────────────
+export async function login(email: string, password: string) {
+  const data = await api<{
+    token: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      schoolId: string;
+      mustResetPassword: boolean;
+      preferences: any;
+    };
+  }>('/auth/login', { method: 'POST', auth: false, body: { email, password } });
+
+  await setToken(data.token);
+  setUser(data.user);
+  return data.user;
+}
+
+export async function updatePassword(password: string) {
+  const user = getUser();
+  if (!user) throw new ApiError('Not authenticated', 401);
+  return api(`/users/${user.id}/password`, { method: 'PUT', body: { password } });
+}
+
+// ─── Authenticated Socket.IO ───────────────────────────────
+export function connectSocket(): Socket {
+  const socket = io(CONFIG.SOCKET_URL, {
+    auth: { token: getToken() }, // REQUIRED — server rejects without it
+    transports: ['websocket'],
+  });
+
+  socket.on('connect_error', (err) => {
+    if (err.message?.startsWith('Unauthorized') || err.message?.includes('invalid token')) {
+      clearAuth();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
+  });
+
+  return socket;
+}
+
+// ─── Stats ─────────────────────────────────────────────────
+export const fetchStats = () => api('/stats');
+
+// ─── Buses ─────────────────────────────────────────────────
 export const fetchBuses = async () => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/buses`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch buses');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/buses`);
 };
 
+export const createBus = async (data: { registrationNumber: string; capacity: number }) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/buses`, { method: 'POST', body: data });
+};
+
+export const deleteBus = async (busId: string) => {
+  return api(`/buses/${busId}`, { method: 'DELETE' });
+};
+
+// ─── Leaves ────────────────────────────────────────────────
 export const fetchLeaves = async (status?: string) => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const url = status && status !== 'all' 
-    ? `${API_BASE}/schools/${schoolId}/leaves?status=${status}` 
-    : `${API_BASE}/schools/${schoolId}/leaves`;
-    
-  const res = await fetch(url, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch leaves');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  const url = status && status !== 'all'
+    ? `/schools/${schoolId}/leaves?status=${status}`
+    : `/schools/${schoolId}/leaves`;
+  return api(url);
 };
 
-export const assignStudentToStop = async (data: { studentId: string, routeStopId: string }) => {
-  const res = await fetch(`${API_BASE}/student-route-mappings`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    let errorMessage = 'Failed to assign student';
-    try {
-      const text = await res.text();
-      errorMessage = `Failed to assign student (HTTP ${res.status}): ${text.substring(0, 100)}`;
-    } catch (e) {
-      // ignore
-    }
-    throw new Error(errorMessage);
-  }
-  
-  const text = await res.text();
-  try {
-    return text ? JSON.parse(text) : { success: true };
-  } catch (e) {
-    return { success: true, text };
-  }
-};
+export const approveLeave = (id: string) =>
+  api(`/leaves/${id}/approve`, { method: 'PUT' });
 
-export const fetchStats = async () => {
-  const res = await fetch(`${API_BASE}/stats`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch stats');
-  return res.json();
-};
+export const rejectLeave = (id: string) =>
+  api(`/leaves/${id}/reject`, { method: 'PUT' });
 
-export const approveLeave = async (id: string) => {
-  const res = await fetch(`${API_BASE}/leaves/${id}/approve`, {
-    method: 'PUT',
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to approve leave');
-  return res.json();
-};
-
-export const rejectLeave = async (id: string) => {
-  const res = await fetch(`${API_BASE}/leaves/${id}/reject`, {
-    method: 'PUT',
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to reject leave');
-  return res.json();
-};
-
+// ─── Routes ────────────────────────────────────────────────
 export const fetchRoutes = async () => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/routes`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch routes');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/routes`);
 };
 
+
+// ─── Students ──────────────────────────────────────────────
 export const fetchStudents = async () => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/students`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch students');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/students`);
 };
 
+export const createStudent = async (data: {
+  name: string;
+  rfidTag?: string;
+  grade?: string;
+  parentEmail?: string;
+  parentName?: string;
+}) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/students`, { method: 'POST', body: data });
+};
+
+// ─── Student → Route mapping ──────────────────────────────
+export const assignStudentToStop = (data: { studentId: string; routeStopId: string }) =>
+  api('/student-route-mappings', { method: 'POST', body: data });
+
+// ─── Trips ─────────────────────────────────────────────────
+export const createTrip = async (data: { routeId: string; busId: string; driverId: string }) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/trips`, { method: 'POST', body: data });
+};
+
+export const updateTripStatus = async (tripId: string, status: 'COMPLETED' | 'CANCELLED') => {
+  return api(`/trips/${tripId}`, { method: 'PATCH', body: { status } });
+};
+
+// ─── Attendance ────────────────────────────────────────────
 export const fetchTodayAttendance = async () => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/attendance/today`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch attendance');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/attendance/today`);
 };
 
-export const createRoute = async (data: { name: string, estimatedDuration?: number }) => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/routes`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create route');
-  return res.json();
-};
-
-export const createTrip = async (data: { routeId: string, busId: string, driverId: string }) => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/trips`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create trip');
-  return res.json();
-};
-
+// ─── Drivers ───────────────────────────────────────────────
 export const fetchDrivers = async () => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/drivers`, {
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to fetch drivers');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/drivers`);
 };
 
-export const createDriver = async (data: { name: string, email: string }) => {
+export const createDriver = async (data: { name: string; email: string }) => {
   const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/drivers`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create driver');
-  return res.json();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/drivers`, { method: 'POST', body: data });
 };
 
-export const updateRoute = async (routeId: string, data: { name?: string, estimatedDuration?: number }) => {
-  const res = await fetch(`${API_BASE}/routes/${routeId}`, {
-    method: 'PUT',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to update route');
-  return res.json();
-};
+// ─── Notifications ─────────────────────────────────────────
+export const fetchNotifications = (limit = 20) =>
+  api(`/notifications?limit=${limit}`);
 
-export const deleteRoute = async (routeId: string) => {
-  const res = await fetch(`${API_BASE}/routes/${routeId}`, {
-    method: 'DELETE',
-    headers: getHeaders(),
-  });
-  if (!res.ok) throw new Error('Failed to delete route');
-  return res.json();
-};
+export const markAllNotificationsRead = () =>
+  api('/notifications/mark-read', { method: 'POST' });
 
-export const createStudent = async (data: { rfidTag: string, name: string, grade?: string, parentEmail?: string, parentName?: string }) => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) throw new Error('No school ID found');
-  
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/students`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error('Failed to create student');
-  return res.json();
-};
+export const markNotificationRead = (id: string) =>
+  api(`/notifications/${id}/read`, { method: 'POST' });
+
+// ─── Search ────────────────────────────────────────────────
+export const searchGlobal = (query: string) =>
+  api(`/search?q=${encodeURIComponent(query)}`);
+
+// ─── Device Locations (for Live Map initial load) ──────────
+export const fetchDeviceLocations = () =>
+  api('/devices/locations');

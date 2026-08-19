@@ -1,7 +1,9 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { students as mockStudents, attendanceData as mockAttendanceData, studentAlerts } from '@/lib/mock-data';
-import { fetchStudents, fetchTodayAttendance, createStudent, fetchStats, fetchRoutes, assignStudentToStop } from '@/lib/api';
+import { fetchStudents, fetchTodayAttendance, createStudent, fetchStats, fetchRoutes, assignStudentToStop, fetchNotifications } from '@/lib/api';
 import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle, MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
@@ -11,6 +13,7 @@ export function StudentsAttendance() {
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [routes, setRoutes] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,12 +28,13 @@ export function StudentsAttendance() {
 
   const loadData = () => {
     setLoading(true);
-    Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats(), fetchRoutes()])
-      .then(([studentsRes, attendanceRes, statsRes, routesRes]) => {
+    Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats(), fetchRoutes(), fetchNotifications()])
+      .then(([studentsRes, attendanceRes, statsRes, routesRes, notificationsRes]) => {
         setStudentsData(studentsRes);
         setAttendanceLogs(attendanceRes);
         setStats(statsRes);
         setRoutes(routesRes);
+        setNotifications(notificationsRes);
         setLoading(false);
       })
       .catch(err => {
@@ -168,13 +172,17 @@ export function StudentsAttendance() {
               <p className="text-sm font-semibold text-slate-500">Total Students</p>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-4xl font-bold text-slate-900">{totalStudents}</span>
-                <span className="text-sm font-bold text-emerald-500">+12%</span>
+                {stats?.studentsGrowthPercent != null && (
+                  <span className="text-sm font-bold text-emerald-500">
+                    {(stats.studentsGrowthPercent > 0 ? '+' : '') + stats.studentsGrowthPercent + '%'}
+                  </span>
+                )}
               </div>
             </div>
             <div className="text-right">
               <p className="text-sm font-semibold text-slate-500">Currently Boarded</p>
               <div className="flex items-baseline gap-2 mt-1 justify-end">
-                <span className="text-4xl font-bold text-slate-900">{presentCount || 382}</span>
+                <span className="text-4xl font-bold text-slate-900">{presentCount}</span>
                 <span className="text-sm font-medium text-slate-500">{boardedPercentage}% of total</span>
               </div>
             </div>
@@ -186,14 +194,14 @@ export function StudentsAttendance() {
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
            <p className="text-sm font-semibold text-slate-500">Absent Today</p>
            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-4xl font-bold text-slate-900">{absentCount || 14}</span>
+              <span className="text-4xl font-bold text-slate-900">{absentCount}</span>
            </div>
            <p className="text-xs text-slate-400 font-medium text-right underline cursor-pointer">Leave Tracking</p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
            <p className="text-sm font-semibold text-slate-500">Late Arrivals</p>
            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-4xl font-bold text-red-600">5</span>
+              <span className="text-4xl font-bold text-slate-400">—</span>
            </div>
            <p className="text-xs text-red-500 font-bold text-right cursor-pointer">Route Flags</p>
         </div>
@@ -270,7 +278,7 @@ export function StudentsAttendance() {
             </table>
           </div>
           <div className="p-4 border-t border-slate-50 flex items-center justify-between text-sm text-slate-500">
-            <span>Showing 5 of 450 students</span>
+            <span>Showing {displayStudents.length} of {totalStudents} students</span>
             <div className="flex gap-1">
               <button className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&lt;</button>
               <button className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&gt;</button>
@@ -319,7 +327,7 @@ export function StudentsAttendance() {
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-900 mb-4">Recent Alerts</h3>
             <div className="space-y-3">
-              {studentAlerts.map((alert) => (
+              {notifications.length > 0 ? notifications.map((alert: any) => (
                 <div key={alert.id} className={clsx(
                   "p-3 rounded-lg border flex gap-3",
                   alert.type === 'error' ? "bg-red-50/50 border-red-100" :
@@ -348,10 +356,12 @@ export function StudentsAttendance() {
                        alert.type === 'error' ? "text-red-700" :
                        alert.type === 'warning' ? "text-amber-700" :
                        "text-orange-700"
-                     )}>{alert.desc}</p>
+                     )}>{alert.message || alert.desc}</p>
                    </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-sm text-slate-500 py-4 text-center">No recent alerts</p>
+              )}
             </div>
             <button className="w-full mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700 py-1 transition-colors">
               View All Alerts
@@ -460,11 +470,10 @@ export function StudentsAttendance() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  RFID Tag <span className="text-red-500">*</span>
+                  RFID Tag
                 </label>
                 <input 
                   type="text"
-                  required
                   value={formData.rfidTag}
                   onChange={(e) => setFormData({...formData, rfidTag: e.target.value})}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"

@@ -2,29 +2,28 @@
 
 import React from 'react';
 import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { clsx } from 'clsx';
+import { clearAuth } from '@/lib/api';
 
-interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-}
-
-export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
+export function Sidebar() {
   const router = useRouter();
+  const pathname = usePathname();
 
-  const handleLogout = () => {
-    localStorage.clear();
+  const handleLogout = async () => {
+    await clearAuth();
     router.push('/login');
   };
 
   const menuItems = [
-    { id: 'overview', label: 'Overview', icon: Bus },
-    { id: 'map', label: 'Live Fleet Map', icon: Map },
-    { id: 'drivers', label: 'Drivers', icon: Users },
-    { id: 'routes', label: 'Manage Routes', icon: Route },
-    { id: 'students', label: 'Students & Attendance', icon: Users },
-    { id: 'leaves', label: 'Leave Requests', icon: CalendarDays },
+    { href: '/overview', label: 'Overview', icon: Bus },
+    { href: '/map', label: 'Live Fleet Map', icon: Map },
+    { href: '/buses', label: 'Manage Buses', icon: Bus },
+    { href: '/drivers', label: 'Drivers', icon: Users },
+    { href: '/routes', label: 'Manage Routes', icon: Route },
+    { href: '/students', label: 'Students & Attendance', icon: Users },
+    { href: '/leaves', label: 'Leave Requests', icon: CalendarDays },
   ];
 
   return (
@@ -44,11 +43,11 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
       <nav className="flex-1 px-4 py-2 space-y-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive = pathname.startsWith(item.href);
           return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
+            <Link
+              key={item.href}
+              href={item.href}
               className={clsx(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                 isActive 
@@ -58,7 +57,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
             >
               <Icon size={18} className={isActive ? "text-white" : "text-slate-400"} />
               {item.label}
-            </button>
+            </Link>
           );
         })}
       </nav>
@@ -77,6 +76,10 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
           <button className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
             <HelpCircle size={18} className="text-slate-400" />
             Support
+          </button>
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors text-red-400 hover:text-red-300">
+            <LogOut size={18} />
+            Logout
           </button>
         </div>
         <div className="mt-4 pt-4 border-t border-slate-800 text-center">

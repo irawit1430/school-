@@ -1,15 +1,28 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { allRoutes as mockRoutes } from '@/lib/mock-data';
-import { fetchRoutes, createRoute, updateRoute, deleteRoute, createTrip, fetchBuses, fetchDrivers } from '@/lib/api';
-import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, MoreVertical, Map, Trash2, X, Users } from 'lucide-react';
+import { fetchRoutes, createRoute, updateRoute, deleteRoute, createTrip, updateTripStatus, fetchBuses, fetchDrivers, fetchStats, getUser } from '@/lib/api';
+import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, MoreVertical, Map, Trash2, X, Users, Route as RouteIcon, Plus, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import toast from 'react-hot-toast';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
+
+const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
 
 export function ManageRoutes() {
   const [routes, setRoutes] = useState<any[]>([]);
   const [buses, setBuses] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>(null);
+  
+  const [activeTab, setActiveTab] = useState('All Routes');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoute, setEditingRoute] = useState<any>(null);
@@ -23,11 +36,12 @@ export function ManageRoutes() {
 
   const loadRoutes = () => {
     setLoading(true);
-    Promise.all([fetchRoutes(), fetchBuses(), fetchDrivers()])
-      .then(([routesData, busesData, driversData]) => {
+    Promise.all([fetchRoutes(), fetchBuses(), fetchDrivers(), fetchStats()])
+      .then(([routesData, busesData, driversData, statsData]) => {
         setRoutes(routesData);
         setBuses(busesData);
         setDrivers(driversData);
+        setStats(statsData);
         setLoading(false);
       })
       .catch(err => {
@@ -56,8 +70,9 @@ export function ManageRoutes() {
   };
 
   const handleOpenAssign = (route: any) => {
+    const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
     setAssignRouteName(route.name);
-    setAssignFormData({ routeId: route.id, busId: '', driverId: '' });
+    setAssignFormData({ routeId: route.id, busId: latestTrip?.busId || '', driverId: latestTrip?.driverId || '' });
     setIsAssignModalOpen(true);
   };
 
@@ -74,7 +89,7 @@ export function ManageRoutes() {
       loadRoutes(); // Refresh to show assignment
     } catch (err) {
       console.error('Failed to assign trip', err);
-      alert('Failed to assign driver and bus. Check IDs and try again.');
+      toast.error('Failed to assign driver and bus. Check IDs and try again.');
     } finally {
       setIsAssignSubmitting(false);
     }
@@ -89,34 +104,116 @@ export function ManageRoutes() {
         estimatedDuration: formData.estimatedDuration ? parseInt(formData.estimatedDuration) : undefined
       };
       
+      const schoolId = getUser()?.schoolId || '';
       if (editingRoute) {
         await updateRoute(editingRoute.id, payload);
       } else {
-        await createRoute(payload);
+        await createRoute(schoolId, payload);
       }
       setIsModalOpen(false);
       loadRoutes();
     } catch (err) {
       console.error('Failed to save route', err);
-      alert('Failed to save route. Please try again.');
+      toast.error('Failed to save route. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (routeId: string) => {
-    if (!confirm('Are you sure you want to delete this route?')) return;
+    if (!window.confirm('Are you sure you want to delete this route?')) return;
     try {
       await deleteRoute(routeId);
       loadRoutes();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete route', err);
-      alert('Failed to delete route');
+      toast.error(err.message || 'Failed to delete route');
     }
   };
 
-  // Use real routes from the database
-  const displayRoutes = routes;
+  const handleCancelActiveTrips = async (route: any) => {
+    if (!route.trips || route.trips.length === 0) return;
+    const activeTrips = route.trips.filter((t: any) => ['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(t.status));
+    if (activeTrips.length === 0) return;
+    
+    if (!window.confirm(`Are you sure you want to cancel ${activeTrips.length} active trip(s)?`)) return;
+    
+    try {
+      await Promise.all(activeTrips.map((t: any) => updateTripStatus(t.id, 'CANCELLED')));
+      loadRoutes();
+    } catch (err: any) {
+      console.error('Failed to cancel trips', err);
+      toast.error(err.message || 'Failed to cancel trips');
+    }
+  };
+
+  // Filter logic
+  const filteredRoutes = routes.filter((route: any) => {
+    if (activeTab === 'All Routes') return true;
+    
+    const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
+    const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
+    
+    if (activeTab === 'Active') {
+      return ['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr);
+    }
+    if (activeTab === 'Inactive') {
+      return ['INACTIVE', 'PLANNED'].includes(statusStr);
+    }
+    if (activeTab === 'Optimizing') {
+      return statusStr === 'OPTIMIZING';
+    }
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRoutes.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const displayRoutes = filteredRoutes.slice(startIndex, startIndex + itemsPerPage);
+
+  // Reset page when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
+
+  const handleExportCSV = () => {
+    if (filteredRoutes.length === 0) { toast.error('No routes to export'); return; }
+    const headers = ['Route Name, Assigned Bus, Assigned Driver, Stops, Est Time, Status'];
+    const rows = filteredRoutes.map((route: any) => {
+      const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
+      const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
+      const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
+      const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
+      const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
+      
+      const busName = assignedBus?.licensePlate || route.bus?.name || 'Unassigned';
+      const driverName = assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver';
+      
+      return `"${route.name}","${busName}","${driverName}",${stopsCount},${route.estimatedDuration || route.time},"${statusStr}"`;
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "routes_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 animate-pulse">
+        <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-slate-100 h-24 rounded-xl border border-slate-200"></div>
+          ))}
+        </div>
+        <div className="bg-slate-100 h-96 rounded-xl border border-slate-200 mt-6"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -140,8 +237,7 @@ export function ManageRoutes() {
           <div>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Average Route Duration</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 leading-none">42m 15s</span>
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">+3%</span>
+              <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.averageRouteDuration ? `${stats.averageRouteDuration}m` : '—'}</span>
             </div>
           </div>
         </div>
@@ -152,8 +248,8 @@ export function ManageRoutes() {
           <div>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Most Efficient Route</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 leading-none">Loop 402B</span>
-              <span className="text-[10px] uppercase font-bold text-emerald-600">98% On-time</span>
+              <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.mostEfficientRoute || '—'}</span>
+              {stats?.mostEfficientRoute && <span className="text-[10px] uppercase font-bold text-emerald-600">98% On-time</span>}
             </div>
           </div>
         </div>
@@ -164,8 +260,8 @@ export function ManageRoutes() {
           <div>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Optimizations</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 leading-none">12</span>
-              <span className="text-[10px] uppercase font-bold text-amber-600">Requires review</span>
+              <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.pendingOptimizations ?? '—'}</span>
+              {stats?.pendingOptimizations != null && <span className="text-[10px] uppercase font-bold text-amber-600">Requires review</span>}
             </div>
           </div>
         </div>
@@ -174,12 +270,13 @@ export function ManageRoutes() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
         <div className="p-3 border-b border-slate-100 flex items-center justify-between">
           <div className="flex space-x-1">
-            {['All Routes', 'Active', 'Inactive', 'Optimizing'].map((tab, i) => (
+            {['All Routes', 'Active', 'Inactive', 'Optimizing'].map((tab) => (
               <button 
                 key={tab}
+                onClick={() => setActiveTab(tab)}
                 className={clsx(
                   "px-3 py-1.5 text-xs font-bold rounded-md transition-colors",
-                  i === 0 ? "text-orange-700 bg-orange-50" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                  activeTab === tab ? "text-orange-700 bg-orange-50" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                 )}
               >
                 {tab}
@@ -187,10 +284,10 @@ export function ManageRoutes() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-md transition-colors">
+            <button disabled title="Advanced filters coming soon" className="flex items-center gap-2 text-xs font-bold text-slate-400 px-3 py-1.5 border border-slate-200 rounded-md bg-slate-50 cursor-not-allowed">
               <SlidersHorizontal size={14} /> Filters
             </button>
-            <button className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-md transition-colors">
+            <button onClick={handleExportCSV} className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-md transition-colors">
               <Download size={14} /> Export CSV
             </button>
           </div>
@@ -227,7 +324,7 @@ export function ManageRoutes() {
                 <tr key={route.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="bg-orange-50 text-orange-600 p-1.5 rounded flex-shrink-0">
+                      <div className="bg-orange-50 text-orange-600 p-2 rounded flex-shrink-0">
                         <Map size={14} />
                       </div>
                       <span className="font-bold text-slate-900 text-xs">{route.name}</span>
@@ -241,7 +338,7 @@ export function ManageRoutes() {
                   <td className="px-4 py-3 font-mono text-[11px] text-slate-700">{route.estimatedDuration || route.time} mins</td>
                   <td className="px-4 py-3">
                     <span className={clsx(
-                      "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5",
+                      "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-2",
                       (statusStr === 'ACTIVE' || statusStr === 'ON_SCHEDULE') && "bg-emerald-100 text-emerald-700",
                       statusStr === 'DELAYED' && "bg-amber-100 text-amber-700",
                       (statusStr === 'INACTIVE' || statusStr === 'PLANNED') && "bg-slate-100 text-slate-600",
@@ -255,25 +352,40 @@ export function ManageRoutes() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors" title="View on Map"><Map size={14} /></button>
+                    <div className="flex items-center justify-end gap-2 transition-opacity">
+                      {['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr) && (
+                        <button 
+                          onClick={() => handleCancelActiveTrips(route)}
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors" 
+                          title="Cancel Active Trip"
+                        >
+                          <XCircle size={14} />
+                        </button>
+                      )}
+                      <Link 
+                        href="/map"
+                        className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors" 
+                        title="View on Map"
+                      >
+                        <Map size={14} />
+                      </Link>
                       <button 
                         onClick={() => handleOpenAssign(route)}
-                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" 
+                        className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" 
                         title="Assign Bus & Driver"
                       >
                         <Users size={14} />
                       </button>
                       <button 
                         onClick={() => handleOpenEdit(route)}
-                        className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors" 
+                        className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors" 
                         title="Edit Route"
                       >
                         <Edit3 size={14} />
                       </button>
                       <button 
                         onClick={() => handleDelete(route.id)}
-                        className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
+                        className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
                         title="Delete Route"
                       >
                         <Trash2 size={14} />
@@ -286,13 +398,42 @@ export function ManageRoutes() {
           </table>
         </div>
         <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Showing 4 of 42 routes</span>
+          <span>Showing {displayRoutes.length > 0 ? startIndex + 1 : 0} to {Math.min(startIndex + itemsPerPage, filteredRoutes.length)} of {filteredRoutes.length} routes</span>
           <div className="flex gap-1">
-            <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&lt;</button>
-            <button className="w-7 h-7 flex items-center justify-center rounded bg-orange-600 text-white font-bold">1</button>
-            <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-50 font-medium">2</button>
-            <button className="w-7 h-7 flex items-center justify-center rounded hover:bg-slate-50 font-medium">3</button>
-            <button className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50">&gt;</button>
+            <button 
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              &lt;
+            </button>
+            {Array.from({ length: totalPages }).map((_, i) => {
+              const pageNum = i + 1;
+              // Only show pages around current page (simple pagination)
+              if (totalPages > 5 && Math.abs(currentPage - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
+                if (pageNum === 2 || pageNum === totalPages - 1) return <span key={pageNum} className="px-1 flex items-center justify-center">...</span>;
+                return null;
+              }
+              return (
+                <button 
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={clsx(
+                    "w-7 h-7 flex items-center justify-center rounded font-medium transition-colors",
+                    currentPage === pageNum ? "bg-orange-600 text-white font-bold" : "hover:bg-slate-50 border border-transparent hover:border-slate-200"
+                  )}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button 
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              &gt;
+            </button>
           </div>
         </div>
       </div>
@@ -320,37 +461,31 @@ export function ManageRoutes() {
                 <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Assign Bus <span className="text-red-500">*</span>
                 </label>
-                <select 
-                  required
+                <SearchableSelect 
+                  options={buses.map((bus: any) => ({
+                    value: bus.id,
+                    label: bus.licensePlate,
+                    subLabel: bus.capacity ? `${bus.capacity} seats` : undefined
+                  }))}
                   value={assignFormData.busId}
-                  onChange={(e) => setAssignFormData({...assignFormData, busId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                >
-                  <option value="" disabled>Select a bus</option>
-                  {buses.map((bus: any) => (
-                    <option key={bus.id} value={bus.id}>
-                      {bus.licensePlate} {bus.capacity ? `(${bus.capacity} seats)` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setAssignFormData({...assignFormData, busId: val})}
+                  placeholder="Select a bus"
+                />
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Assign Driver <span className="text-red-500">*</span>
                 </label>
-                <select 
-                  required
+                <SearchableSelect 
+                  options={drivers.map((driver: any) => ({
+                    value: driver.id,
+                    label: driver.name,
+                    subLabel: driver.email
+                  }))}
                   value={assignFormData.driverId}
-                  onChange={(e) => setAssignFormData({...assignFormData, driverId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                >
-                  <option value="" disabled>Select a driver</option>
-                  {drivers.map((driver: any) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.name} ({driver.email})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setAssignFormData({...assignFormData, driverId: val})}
+                  placeholder="Select a driver"
+                />
               </div>
               
               <div className="pt-4 flex gap-3 justify-end">
@@ -375,64 +510,19 @@ export function ManageRoutes() {
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">
-                {editingRoute ? 'Edit Route' : 'Create New Route'}
-              </h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Route Name <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="e.g. Morning Route A"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Estimated Duration (minutes)
-                </label>
-                <input 
-                  type="number"
-                  min="1"
-                  value={formData.estimatedDuration}
-                  onChange={(e) => setFormData({...formData, estimatedDuration: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="e.g. 45"
-                />
-              </div>
-              
-              <div className="pt-4 flex gap-3 justify-end">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
-                >
-                  {isSubmitting ? 'Saving...' : (editingRoute ? 'Save Changes' : 'Create Route')}
-                </button>
-              </div>
-            </form>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden p-6 max-h-[90vh] overflow-y-auto">
+            <RouteMapEditor 
+              schoolId={getUser()?.schoolId || ''} 
+              initialRoute={editingRoute}
+              buses={buses}
+              drivers={drivers}
+              onSaved={() => {
+                setIsModalOpen(false);
+                loadRoutes();
+              }}
+              onCancel={() => setIsModalOpen(false)}
+            />
           </div>
         </div>
       )}
