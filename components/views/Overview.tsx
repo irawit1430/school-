@@ -57,7 +57,6 @@ export function Overview() {
     }
   };
 
-  const activeBusesCount = buses.filter(b => b.status === 'active').length;
   
   // Transform leaves from API to match UI
   const displayLeaves = leaves.slice(0, 5).map(leave => ({
