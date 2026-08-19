@@ -139,9 +139,17 @@ export function StudentsAttendance() {
     };
   });
 
-  const boardedCount = displayStudents.filter(s => s.status === 'Boarded').length;
-  const atSchoolCount = displayStudents.filter(s => s.status === 'At School').length;
-  const absentCount = displayStudents.filter(s => s.status === 'Absent').length;
+  let boardedCount = 0;
+  let atSchoolCount = 0;
+  let absentCount = 0;
+
+  for (let i = 0; i < displayStudents.length; i++) {
+    const status = displayStudents[i].status;
+    if (status === 'Boarded') boardedCount++;
+    else if (status === 'At School') atSchoolCount++;
+    else if (status === 'Absent') absentCount++;
+  }
+
   const presentCount = boardedCount + atSchoolCount;
 
   const dynamicAttendanceData = [
