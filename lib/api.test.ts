@@ -26,6 +26,7 @@ describe('fetchBuses', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
   });
 
   it('should fetch buses successfully when schoolId is present in user localStorage', async () => {
@@ -101,10 +102,13 @@ describe('fetchBuses', () => {
   });
 });
 
+import { clearSchoolIdCache } from './api';
+
 describe('fetchRoutes', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
   });
 
   it('should fetch routes successfully when schoolId is present in user localStorage', async () => {
