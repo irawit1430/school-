@@ -13,12 +13,32 @@ import { SearchableSelect } from '@/components/ui/SearchableSelect';
 
 const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
 
+// Single source of truth for "trip is live" — used by the Active tab filter,
+// the cancel action's visibility AND its trip selection.
+const ACTIVE_TRIP_STATUSES = ['PLANNED', 'ON_SCHEDULE', 'DELAYED'];
+
+// Known trip statuses get a colored pill; anything else falls back to slate.
+const TRIP_TONES: Record<string, { badge: string; dot: string }> = {
+  ON_SCHEDULE: { badge: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
+  DELAYED: { badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' },
+  PLANNED: { badge: 'bg-sky-100 text-sky-700', dot: 'bg-sky-500' },
+  CANCELLED: { badge: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' },
+};
+const FALLBACK_TONE = { badge: 'bg-slate-100 text-slate-600', dot: 'bg-slate-500' };
+
+// Escape for RFC-4180 CSV and neutralize Excel formula injection (=+-@ prefixes).
+const csvCell = (v: any) => {
+  const s = String(v ?? '').replace(/"/g, '""');
+  return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
+};
+
 export function ManageRoutes() {
   const [routes, setRoutes] = useState<any[]>([]);
   const [buses, setBuses] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState('All Routes');
   const [currentPage, setCurrentPage] = useState(1);
@@ -34,6 +54,7 @@ export function ManageRoutes() {
 
   const loadRoutes = () => {
     setLoading(true);
+    setLoadError(null);
     Promise.all([fetchRoutes(), fetchBuses(), fetchDrivers(), fetchStats()])
       .then(([routesData, busesData, driversData, statsData]) => {
         setRoutes(routesData);
@@ -44,6 +65,8 @@ export function ManageRoutes() {
       })
       .catch(err => {
         console.error('Failed to load data:', err);
+        setLoadError(err?.message || 'Failed to load routes');
+        toast.error('Failed to load routes');
         setLoading(false);
       });
   };
@@ -102,7 +125,7 @@ export function ManageRoutes() {
 
   const handleCancelActiveTrips = async (route: any) => {
     if (!route.trips || route.trips.length === 0) return;
-    const activeTrips = route.trips.filter((t: any) => ['PLANNED', 'ON_SCHEDULE', 'DELAYED'].includes(t.status));
+    const activeTrips = route.trips.filter((t: any) => ACTIVE_TRIP_STATUSES.includes(t.status));
     if (activeTrips.length === 0) return;
     
     if (!window.confirm(`Are you sure you want to cancel ${activeTrips.length} active trip(s)?`)) return;
@@ -125,7 +148,7 @@ export function ManageRoutes() {
     const statusStr = latestTrip?.status || 'INACTIVE';
 
     if (activeTab === 'Active') {
-      return ['PLANNED', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr);
+      return ACTIVE_TRIP_STATUSES.includes(statusStr);
     }
     if (activeTab === 'Inactive') {
       return ['COMPLETED', 'CANCELLED', 'INACTIVE'].includes(statusStr);
@@ -144,21 +167,21 @@ export function ManageRoutes() {
 
   const handleExportCSV = () => {
     if (filteredRoutes.length === 0) { toast.error('No routes to export'); return; }
-    const headers = ['Route Name, Assigned Bus, Assigned Driver, Stops, Est Time, Status'];
+    const header = ['Route Name', 'Assigned Bus', 'Assigned Driver', 'Stops', 'Est Time', 'Status'].map(csvCell).join(',');
     const rows = filteredRoutes.map((route: any) => {
       const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
       const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
       const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
       const statusStr = latestTrip?.status || 'INACTIVE';
       const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
-      
+
       const busName = assignedBus?.licensePlate || route.bus?.name || 'Unassigned';
       const driverName = assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver';
-      
-      return `"${route.name}","${busName}","${driverName}",${stopsCount},${route.estimatedDuration || route.time},"${statusStr}"`;
+
+      return [route.name, busName, driverName, stopsCount, route.estimatedDuration || route.time || '', statusStr].map(csvCell).join(',');
     });
-    
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+
+    const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].join('\r\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -195,6 +218,15 @@ export function ManageRoutes() {
           <span>+</span> Create New Route
         </button>
       </div>
+
+      {loadError && (
+        <div className="flex items-center justify-between bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm">
+          <span>Couldn&apos;t load routes: {loadError}</span>
+          <button onClick={loadRoutes} className="font-bold underline hover:no-underline focus:outline-none">
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
@@ -275,7 +307,7 @@ export function ManageRoutes() {
               {displayRoutes.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    No routes found. Create one to get started.
+                    {activeTab === 'All Routes' ? 'No routes found. Create one to get started.' : `No ${activeTab.toLowerCase()} routes.`}
                   </td>
                 </tr>
               ) : displayRoutes.map((route: any) => {
@@ -305,23 +337,15 @@ export function ManageRoutes() {
                   <td className="px-4 py-3">
                     <span className={clsx(
                       "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-2",
-                      statusStr === 'ON_SCHEDULE' && "bg-emerald-100 text-emerald-700",
-                      statusStr === 'DELAYED' && "bg-amber-100 text-amber-700",
-                      statusStr === 'PLANNED' && "bg-sky-100 text-sky-700",
-                      statusStr === 'CANCELLED' && "bg-rose-100 text-rose-700",
-                      (statusStr === 'COMPLETED' || statusStr === 'INACTIVE') && "bg-slate-100 text-slate-600"
+                      (TRIP_TONES[statusStr] || FALLBACK_TONE).badge
                     )}>
-                      {statusStr === 'ON_SCHEDULE' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>}
-                      {statusStr === 'DELAYED' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>}
-                      {statusStr === 'PLANNED' && <div className="w-1.5 h-1.5 rounded-full bg-sky-500"></div>}
-                      {statusStr === 'CANCELLED' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>}
-                      {(statusStr === 'COMPLETED' || statusStr === 'INACTIVE') && <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>}
+                      <div className={clsx("w-1.5 h-1.5 rounded-full", (TRIP_TONES[statusStr] || FALLBACK_TONE).dot)}></div>
                       {statusStr === 'INACTIVE' ? 'No Trip' : statusStr.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2 transition-opacity">
-                      {['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr) && (
+                      {ACTIVE_TRIP_STATUSES.includes(statusStr) && (
                         <button 
                           onClick={() => handleCancelActiveTrips(route)}
                           className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500" 
@@ -331,9 +355,9 @@ export function ManageRoutes() {
                           <XCircle size={14} />
                         </button>
                       )}
-                      <Link 
-                        href="/map"
-                        className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500" 
+                      <Link
+                        href={`/map?route=${encodeURIComponent(route.name)}`}
+                        className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
                         title="View on Map"
                         aria-label="View on Map"
                       >

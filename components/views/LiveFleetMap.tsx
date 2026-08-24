@@ -11,7 +11,11 @@ export function LiveFleetMap() {
   const [loading, setLoading] = useState(true);
   const [selectedBusId, setSelectedBusId] = useState<string | null>(null);
   const [filterSingleBus, setFilterSingleBus] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Deep-link support: /routes page sends /map?route=<name> — prefill search.
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('route') || '';
+  });
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'OFFLINE'>('ALL');
 
   useEffect(() => {
