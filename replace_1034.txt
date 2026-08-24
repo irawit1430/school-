@@ -1,0 +1,40 @@
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 className="text-xl font-bold text-slate-900">{initialRoute ? 'Edit Route' : 'Create New Route'}</h3>
+        <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-colors">
+          ✕
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label className="text-sm font-semibold text-slate-700">Route Name</label>
+        <input
+          className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm font-medium transition-all shadow-sm"
+          placeholder="e.g. Morning Route A"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-semibold text-slate-700">Route Map</label>
+          <span className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-md">Click on map to add stops</span>
+        </div>
+        <div className="h-[400px] border-2 border-slate-200 rounded-xl overflow-hidden relative z-0 shadow-inner">
+          <MapContainer center={[28.7041, 77.1025]} zoom={12} className="h-full w-full">
+            <TileLayer
+              attribution='&copy; OpenStreetMap'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <ClickToAdd onAdd={handleAdd} />
+            {stops.map((s, i) => (
+              <Marker key={i} position={[s.lat, s.lng]} />
+            ))}
+            {osrm?.latLngs && <Polyline positions={osrm.latLngs} color="#ea580c" weight={5} opacity={0.8} />}
+          </MapContainer>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <h4 className="font-semibold text-slate-800 text-sm">Stops ({stops.length})</h4>

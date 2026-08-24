@@ -158,15 +158,17 @@ export function BusesList() {
                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                       <button 
                         onClick={() => handleOpenAssign(bus)}
-                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         title="Assign Route"
+                        aria-label="Assign Route"
                       >
                         <RouteIcon size={16} />
                       </button>
                       <button 
                         onClick={() => handleDelete(bus.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
                         title="Delete Bus"
+                        aria-label="Delete Bus"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -223,14 +225,14 @@ export function BusesList() {
                 <button 
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
+                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   {isSubmitting ? 'Saving...' : 'Add Bus'}
                 </button>
@@ -297,14 +299,14 @@ export function BusesList() {
                 <button 
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
+                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
                   Cancel
                 </button>
                 <button 
                   type="submit"
                   disabled={isAssignSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors text-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   {isAssignSubmitting ? 'Assigning...' : 'Assign Route'}
                 </button>

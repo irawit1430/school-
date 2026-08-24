@@ -1,19 +1,33 @@
 "use client";
 
 import React from 'react';
-import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut } from 'lucide-react';
+import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import toast from 'react-hot-toast';
 import { clearAuth } from '@/lib/api';
 
-export function Sidebar() {
+interface SidebarProps {
+  open?: boolean;
+  onClose?: () => void;
+}
+
+export function Sidebar({ open = false, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
   const handleLogout = async () => {
     await clearAuth();
     router.push('/login');
+  };
+
+  const handleEmergencyBroadcast = () => {
+    toast('Emergency Broadcast is not available yet.', { icon: '🚧' });
+  };
+
+  const handleComingSoon = (feature: string) => {
+    toast(`${feature} is coming soon.`, { icon: '🚧' });
   };
 
   const menuItems = [
@@ -27,10 +41,26 @@ export function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 shrink-0">
-      <div className="p-6">
+    <>
+      {/* Mobile overlay */}
+      <div
+        onClick={onClose}
+        className={clsx(
+          "fixed inset-0 z-30 bg-slate-900/50 backdrop-blur-sm transition-opacity lg:hidden",
+          open ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        aria-hidden="true"
+      />
+
+      <aside
+        className={clsx(
+          "w-64 bg-slate-900 text-slate-300 flex flex-col h-screen fixed left-0 top-0 shrink-0 z-40 transition-transform duration-300 ease-in-out lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+      <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-orange-600 text-white p-2 rounded-lg">
+          <div className="bg-primary text-white p-2 rounded-lg">
             <Bus size={24} />
           </div>
           <div>
@@ -38,6 +68,13 @@ export function Sidebar() {
             <p className="text-xs text-slate-400 font-medium">India HQ</p>
           </div>
         </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors"
+          aria-label="Close menu"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       <nav className="flex-1 px-4 py-2 space-y-1">
@@ -50,8 +87,8 @@ export function Sidebar() {
               href={item.href}
               className={clsx(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                isActive 
-                  ? "bg-orange-600 text-white font-medium" 
+                isActive
+                  ? "bg-primary text-white font-medium"
                   : "text-slate-300 hover:bg-slate-800"
               )}
             >
@@ -63,21 +100,30 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-slate-800">
-        <button className="w-full flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white py-2 px-4 rounded-md text-sm font-medium transition-colors mb-4 shadow-sm">
+        <button
+          onClick={handleEmergencyBroadcast}
+          className="w-full flex items-center justify-center gap-2 bg-danger hover:bg-danger-hover text-white py-2 px-4 rounded-md text-sm font-medium transition-colors mb-4 shadow-sm"
+        >
           <AlertTriangle size={16} />
           Emergency Broadcast
         </button>
-        
+
         <div className="space-y-1">
-          <button className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
+          <button
+            onClick={() => handleComingSoon('Settings')}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors"
+          >
             <Settings size={18} className="text-slate-400" />
             Settings
           </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors">
+          <button
+            onClick={() => handleComingSoon('Support')}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors"
+          >
             <HelpCircle size={18} className="text-slate-400" />
             Support
           </button>
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors text-red-400 hover:text-red-300">
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors text-rose-400 hover:text-rose-300 hover:bg-slate-800">
             <LogOut size={18} />
             Logout
           </button>
@@ -86,6 +132,7 @@ export function Sidebar() {
           <p className="text-[10px] text-slate-500 font-medium tracking-wide">VOLTAVA MOBILITY INDIA 🇮🇳</p>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

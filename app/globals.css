@@ -1,1 +1,68 @@
 @import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Voltava Design Tokens
+   Single source of truth for brand + semantic colors.
+   Usage: bg-primary, text-primary, bg-danger, border-surface-border …
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  /* Brand / Primary (warm orange) */
+  --color-primary: #ea580c;        /* orange-600 */
+  --color-primary-hover: #c2410c;  /* orange-700 */
+  --color-primary-soft: #fff7ed;   /* orange-50  */
+  --color-primary-softtext: #c2410c;
+
+  /* Semantic status */
+  --color-success: #059669;        /* emerald-600 */
+  --color-success-soft: #ecfdf5;   /* emerald-50  */
+  --color-warning: #f59e0b;        /* amber-500   */
+  --color-warning-soft: #fffbeb;   /* amber-50    */
+  --color-danger: #e11d48;         /* rose-600    */
+  --color-danger-hover: #be123c;   /* rose-700    */
+  --color-danger-soft: #fff1f2;    /* rose-50     */
+  --color-info: #0ea5e9;           /* sky-500     */
+
+  /* Surfaces & text */
+  --color-app-bg: #f8fafc;         /* slate-50  */
+  --color-sidebar: #0f172a;        /* slate-900 */
+  --color-surface: #ffffff;
+  --color-surface-border: #e2e8f0; /* slate-200 */
+  --color-text-strong: #0f172a;    /* slate-900 */
+  --color-text-muted: #64748b;     /* slate-500 */
+}
+
+/* ─── Global base styles ─── */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-color: var(--color-app-bg);
+  color: var(--color-text-strong);
+}
+
+/* Consistent, accessible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Subtle, modern scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}

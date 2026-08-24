@@ -34,7 +34,18 @@ function MapController({
 }) {
   const map = useMap();
   
+  const hasFitBounds = React.useRef(false);
+  const prevSelectedBus = React.useRef<string | null | undefined>(undefined);
+
   useEffect(() => {
+    // If selected bus changed, we allow flying to it once
+    if (selectedBusId !== prevSelectedBus.current) {
+      hasFitBounds.current = false;
+      prevSelectedBus.current = selectedBusId;
+    }
+
+    if (hasFitBounds.current) return;
+
     // If a specific bus is selected, smoothly fly to it
     if (selectedBusId) {
       const selectedBus = buses.find(b => b.id === selectedBusId);
@@ -45,6 +56,7 @@ function MapController({
           duration: 1.2,
           easeLinearity: 0.25
         });
+        hasFitBounds.current = true;
         return;
       }
     }
@@ -53,19 +65,42 @@ function MapController({
     const busesWithCoords = buses.filter(b => b.gpsLogs?.[0]?.lat && b.gpsLogs?.[0]?.lng);
     
     if (busesWithCoords.length === 0) {
-      map.flyTo(center, map.getZoom(), { duration: 1 });
+      // Don't mark as fit if no buses, we might get them soon
       return;
     }
 
     if (busesWithCoords.length === 1) {
       map.flyTo([busesWithCoords[0].gpsLogs[0].lat, busesWithCoords[0].gpsLogs[0].lng], 15, { duration: 1.2 });
+      hasFitBounds.current = true;
       return;
     }
 
     // Fit bounds for multiple buses
     const bounds = L.latLngBounds(busesWithCoords.map(b => [b.gpsLogs[0].lat, b.gpsLogs[0].lng]));
     map.fitBounds(bounds, { padding: [60, 60], animate: true, duration: 1 });
+    hasFitBounds.current = true;
   }, [selectedBusId, buses, center, map]);
+
+  useEffect(() => {
+    // Disable marker transitions when panning/zooming to prevent them from flying around
+    const handleMoveStart = () => {
+      document.documentElement.style.setProperty('--marker-transition', 'none');
+    };
+    const handleMoveEnd = () => {
+      document.documentElement.style.setProperty('--marker-transition', 'transform 0.8s linear');
+    };
+    
+    // Set initial value
+    document.documentElement.style.setProperty('--marker-transition', 'transform 0.8s linear');
+
+    map.on('movestart', handleMoveStart);
+    map.on('moveend', handleMoveEnd);
+    
+    return () => {
+      map.off('movestart', handleMoveStart);
+      map.off('moveend', handleMoveEnd);
+    };
+  }, [map]);
 
   return null;
 }
@@ -87,10 +122,18 @@ export default function RealMap({
     ? buses.filter(b => b.id === selectedBusId)
     : buses;
 
-  const createCustomIcon = (bus: any, isSelected: boolean) => {
+  const iconCache = React.useRef<Record<string, L.DivIcon>>({});
+
+  const getCustomIcon = (bus: any, isSelected: boolean) => {
     const speed = bus.gpsLogs?.[0]?.speed || 0;
     const isAlert = speed > 60;
     const isDelayed = bus.status === 'delayed';
+
+    const cacheKey = `${bus.id}-${isSelected}-${isAlert}-${isDelayed}`;
+    
+    if (iconCache.current[cacheKey]) {
+      return iconCache.current[cacheKey];
+    }
 
     const bgColorClass = isAlert ? 'bg-red-500' : isDelayed ? 'bg-amber-500' : 'bg-emerald-500';
     const labelBgClass = isAlert ? 'bg-red-900' : isDelayed ? 'bg-amber-900' : 'bg-slate-900';
@@ -121,18 +164,20 @@ export default function RealMap({
           isSelected ? "bg-orange-600 ring-1 ring-white/50 scale-105" : labelBgClass
         )}>
           {bus.name || bus.licensePlate || bus.registrationNumber || 'Bus'}
-          {speed > 0 && <span className="ml-1 opacity-80 font-normal">({speed.toFixed(0)} km/h)</span>}
         </div>
       </div>
     );
 
-    return L.divIcon({
+    const icon = L.divIcon({
       html: iconHtml,
       className: 'smooth-bus-marker',
       iconSize: [44, 65],
       iconAnchor: [22, 35],
       popupAnchor: [0, -35],
     });
+
+    iconCache.current[cacheKey] = icon;
+    return icon;
   };
 
   return (
@@ -140,7 +185,7 @@ export default function RealMap({
       {/* Global CSS for Smooth Marker Transitions and Leaflet Styling */}
       <style jsx global>{`
         .leaflet-marker-icon.smooth-bus-marker {
-          transition: transform 0.8s cubic-bezier(0.25, 1, 0.5, 1) !important;
+          transition: var(--marker-transition, transform 0.8s linear) !important;
         }
         .leaflet-pane {
           z-index: 10 !important;
@@ -174,7 +219,7 @@ export default function RealMap({
             <Marker 
               key={bus.id} 
               position={[lat, lng]} 
-              icon={createCustomIcon(bus, isSelected)}
+              icon={getCustomIcon(bus, isSelected)}
               eventHandlers={{
                 click: () => {
                   if (onSelectBus) {

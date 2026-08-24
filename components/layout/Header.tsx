@@ -4,7 +4,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route } from 'lucide-react';
+import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
@@ -13,6 +13,7 @@ import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotifi
 interface HeaderProps {
   title?: string;
   subtitle?: string;
+  onMenuClick?: () => void;
 }
 
 interface SearchResult {
@@ -30,7 +31,7 @@ interface Notification {
   createdAt: string;
 }
 
-export function Header({ title = "Voltava", subtitle }: HeaderProps) {
+export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps) {
   const router = useRouter();
   const [time, setTime] = useState<string>("--:-- --");
   const [date, setDate] = useState<string>("--- --, ----");
@@ -164,10 +165,10 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
   const getSearchIcon = (type: string) => {
     if (!type) return <Search size={14} className="text-slate-500" />;
     switch (type.toLowerCase()) {
-      case 'student': return <Users size={14} className="text-blue-500" />;
-      case 'driver': return <Users size={14} className="text-orange-500" />;
-      case 'bus': return <Bus size={14} className="text-emerald-500" />;
-      case 'route': return <Route size={14} className="text-purple-500" />;
+      case 'student': return <Users size={14} className="text-info" />;
+      case 'driver': return <Users size={14} className="text-primary" />;
+      case 'bus': return <Bus size={14} className="text-success" />;
+      case 'route': return <Route size={14} className="text-info" />;
       default: return <Search size={14} className="text-slate-500" />;
     }
   };
@@ -175,6 +176,13 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
   return (
     <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10 shrink-0">
       <div className="flex items-center gap-2">
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden p-2 -ml-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
         <h2 className="text-lg font-bold text-slate-900">{title}</h2>
         {subtitle && (
           <>
@@ -196,7 +204,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
               setShowSearchDropdown(true);
             }}
             onFocus={() => setShowSearchDropdown(true)}
-            className="pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 rounded-md text-sm w-64 transition-all outline-none"
+            className="pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary rounded-md text-sm w-36 sm:w-64 transition-all outline-none"
           />
           
           {showSearchDropdown && searchQuery.trim() !== '' && (
@@ -229,7 +237,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-4 text-sm text-slate-500 border-r border-slate-200 pr-4">
+        <div className="hidden md:flex items-center gap-4 text-sm text-slate-500 border-r border-slate-200 pr-4">
           <div className="flex flex-col items-end">
             <span className="font-semibold text-slate-700">{time}</span>
             <span className="text-[10px] uppercase tracking-wider">{date}</span>

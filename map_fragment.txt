@@ -1,0 +1,100 @@
+          await createTrip({
+            routeId: newRoute.id,
+            busId: selectedBusId,
+            driverId: selectedDriverId
+          });
+          toast.success('Route created & assigned successfully!');
+        } else {
+          toast.success('Route created successfully');
+        }
+      }
+      onSaved();
+    } catch (err: any) {
+      toast.error(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 className="text-xl font-bold text-slate-900">{initialRoute ? 'Edit Route' : 'Create New Route'}</h3>
+        <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 p-2 rounded-full transition-colors">
+          Γ£ò
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex flex-col gap-2 md:col-span-1">
+          <label className="text-sm font-semibold text-slate-700">Route Name</label>
+          <input
+            className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm font-medium transition-all shadow-sm"
+            placeholder="e.g. Morning Route A"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+        </div>
+        {buses && drivers && (
+          <>
+            <div className="flex flex-col gap-2 relative">
+              <SearchableSelect 
+                  label="Assign Bus (Optional)"
+                  options={buses.map((bus: any) => ({
+                    value: bus.id,
+                    label: bus.licensePlate,
+                    subLabel: bus.capacity ? `${bus.capacity} seats` : undefined
+                  }))}
+                  value={selectedBusId}
+                  onChange={(val) => setSelectedBusId(val)}
+                  placeholder="Select a bus"
+                />
+            </div>
+            <div className="flex flex-col gap-2 relative">
+              <SearchableSelect 
+                  label="Assign Driver (Optional)"
+                  options={drivers.map((driver: any) => ({
+                    value: driver.id,
+                    label: driver.name,
+                    subLabel: driver.email
+                  }))}
+                  value={selectedDriverId}
+                  onChange={(val) => setSelectedDriverId(val)}
+                  placeholder="Select a driver"
+                />
+            </div>
+          </>
+        )}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={stops.map(s => s.lat + '-' + s.lng)} strategy={verticalListSortingStrategy}>
+            <ul className="space-y-2 max-h-48 overflow-y-auto">
+              {stops.map((s, i) => (
+                <SortableStopItem 
+                  key={s.lat + '-' + s.lng} 
+                  id={s.lat + '-' + s.lng}
+                  index={i} 
+                  stop={s} 
+                  onRemove={(idx: number) => setStops(p => p.filter((_, j) => j !== idx))} 
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+        {osrm && (
+          <p className="mt-3 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-2 rounded-lg inline-block">
+            Distance: <span className="text-slate-900">{osrm.distanceKm.toFixed(1)} km</span> ┬╖ Duration: <span className="text-slate-900">{osrm.durationMin} min</span>
+          </p>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving || stops.length < 2 || !name.trim()}
+          className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition-colors shadow-sm"

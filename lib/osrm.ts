@@ -1,6 +1,15 @@
 import polyline from '@mapbox/polyline';
 
-export type Stop = { lat: number; lng: number; name?: string; address?: string };
+export type Stop = {
+  uid?: string;      // stable client-side id (survives duplicate coordinates / reorder)
+  id?: string;       // backend id (present when editing an existing route)
+  lat: number;
+  lng: number;
+  name?: string;
+  address?: string;
+  orderIdx?: number;
+  expectedArrivalMinutes?: number;
+};
 export type OsrmResult = {
   geometry: string;
   latLngs: [number, number][];

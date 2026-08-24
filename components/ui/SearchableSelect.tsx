@@ -14,9 +14,10 @@ interface SearchableSelectProps {
   onChange: (value: string) => void;
   placeholder?: string;
   label?: string;
+  disabled?: boolean;
 }
 
-export function SearchableSelect({ options, value, onChange, placeholder, label }: SearchableSelectProps) {
+export function SearchableSelect({ options, value, onChange, placeholder, label, disabled }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -42,10 +43,13 @@ export function SearchableSelect({ options, value, onChange, placeholder, label 
     <div className="relative flex flex-col gap-1" ref={wrapperRef}>
       {label && <label className="block text-sm font-semibold text-slate-700 mb-1">{label}</label>}
       <div 
-        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500 outline-none transition-all flex items-center justify-between cursor-pointer bg-white"
-        onClick={() => setIsOpen(!isOpen)}
+        className={clsx(
+          "w-full px-3 py-2 border border-slate-300 rounded-lg focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500 outline-none transition-all flex items-center justify-between",
+          disabled ? "bg-slate-50 cursor-not-allowed text-slate-500" : "bg-white cursor-pointer"
+        )}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
       >
-        <span className={clsx("text-sm", !selectedOption && "text-slate-400")}>
+        <span className={clsx("text-sm", (!selectedOption || disabled) && "text-slate-500", selectedOption && !disabled && "text-slate-900")}>
           {selectedOption ? selectedOption.label : (placeholder || 'Select...')}
         </span>
         <ChevronDown size={16} className="text-slate-400" />

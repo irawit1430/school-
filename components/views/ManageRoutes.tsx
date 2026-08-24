@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchRoutes, createRoute, updateRoute, deleteRoute, createTrip, updateTripStatus, fetchBuses, fetchDrivers, fetchStats, getUser } from '@/lib/api';
+import { fetchRoutes, deleteRoute, createTrip, updateTripStatus, fetchBuses, fetchDrivers, fetchStats, getUser } from '@/lib/api';
 import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, MoreVertical, Map, Trash2, X, Users, Route as RouteIcon, Plus, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import Link from 'next/link';
@@ -26,8 +26,6 @@ export function ManageRoutes() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoute, setEditingRoute] = useState<any>(null);
-  const [formData, setFormData] = useState({ name: '', estimatedDuration: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignFormData, setAssignFormData] = useState({ routeId: '', busId: '', driverId: '' });
@@ -56,16 +54,11 @@ export function ManageRoutes() {
 
   const handleOpenCreate = () => {
     setEditingRoute(null);
-    setFormData({ name: '', estimatedDuration: '' });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (route: any) => {
     setEditingRoute(route);
-    setFormData({ 
-      name: route.name, 
-      estimatedDuration: route.estimatedDuration ? route.estimatedDuration.toString() : '' 
-    });
     setIsModalOpen(true);
   };
 
@@ -87,36 +80,12 @@ export function ManageRoutes() {
       });
       setIsAssignModalOpen(false);
       loadRoutes(); // Refresh to show assignment
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to assign trip', err);
-      toast.error('Failed to assign driver and bus. Check IDs and try again.');
+      // Backend rejects double-booking with 400 + a specific message.
+      toast.error(err?.message || 'Failed to assign driver and bus. Please try again.');
     } finally {
       setIsAssignSubmitting(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const payload = {
-        name: formData.name,
-        estimatedDuration: formData.estimatedDuration ? parseInt(formData.estimatedDuration) : undefined
-      };
-      
-      const schoolId = getUser()?.schoolId || '';
-      if (editingRoute) {
-        await updateRoute(editingRoute.id, payload);
-      } else {
-        await createRoute(schoolId, payload);
-      }
-      setIsModalOpen(false);
-      loadRoutes();
-    } catch (err) {
-      console.error('Failed to save route', err);
-      toast.error('Failed to save route. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -133,7 +102,7 @@ export function ManageRoutes() {
 
   const handleCancelActiveTrips = async (route: any) => {
     if (!route.trips || route.trips.length === 0) return;
-    const activeTrips = route.trips.filter((t: any) => ['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(t.status));
+    const activeTrips = route.trips.filter((t: any) => ['PLANNED', 'ON_SCHEDULE', 'DELAYED'].includes(t.status));
     if (activeTrips.length === 0) return;
     
     if (!window.confirm(`Are you sure you want to cancel ${activeTrips.length} active trip(s)?`)) return;
@@ -151,17 +120,15 @@ export function ManageRoutes() {
   const filteredRoutes = routes.filter((route: any) => {
     if (activeTab === 'All Routes') return true;
     
+    // Route has no status field in the DB — derive it from the latest trip.
     const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
-    const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
-    
+    const statusStr = latestTrip?.status || 'INACTIVE';
+
     if (activeTab === 'Active') {
-      return ['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr);
+      return ['PLANNED', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr);
     }
     if (activeTab === 'Inactive') {
-      return ['INACTIVE', 'PLANNED'].includes(statusStr);
-    }
-    if (activeTab === 'Optimizing') {
-      return statusStr === 'OPTIMIZING';
+      return ['COMPLETED', 'CANCELLED', 'INACTIVE'].includes(statusStr);
     }
     return true;
   });
@@ -182,7 +149,7 @@ export function ManageRoutes() {
       const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
       const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
       const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
-      const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
+      const statusStr = latestTrip?.status || 'INACTIVE';
       const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
       
       const busName = assignedBus?.licensePlate || route.bus?.name || 'Unassigned';
@@ -249,7 +216,6 @@ export function ManageRoutes() {
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Most Efficient Route</p>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.mostEfficientRoute || '—'}</span>
-              {stats?.mostEfficientRoute && <span className="text-[10px] uppercase font-bold text-emerald-600">98% On-time</span>}
             </div>
           </div>
         </div>
@@ -261,7 +227,7 @@ export function ManageRoutes() {
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Optimizations</p>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.pendingOptimizations ?? '—'}</span>
-              {stats?.pendingOptimizations != null && <span className="text-[10px] uppercase font-bold text-amber-600">Requires review</span>}
+              {stats?.pendingOptimizations > 0 && <span className="text-[10px] uppercase font-bold text-amber-600">Requires review</span>}
             </div>
           </div>
         </div>
@@ -270,12 +236,12 @@ export function ManageRoutes() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
         <div className="p-3 border-b border-slate-100 flex items-center justify-between">
           <div className="flex space-x-1">
-            {['All Routes', 'Active', 'Inactive', 'Optimizing'].map((tab) => (
+            {['All Routes', 'Active', 'Inactive'].map((tab) => (
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={clsx(
-                  "px-3 py-1.5 text-xs font-bold rounded-md transition-colors",
+                  "px-3 py-1.5 text-xs font-bold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500",
                   activeTab === tab ? "text-orange-700 bg-orange-50" : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
                 )}
               >
@@ -287,7 +253,7 @@ export function ManageRoutes() {
             <button disabled title="Advanced filters coming soon" className="flex items-center gap-2 text-xs font-bold text-slate-400 px-3 py-1.5 border border-slate-200 rounded-md bg-slate-50 cursor-not-allowed">
               <SlidersHorizontal size={14} /> Filters
             </button>
-            <button onClick={handleExportCSV} className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-md transition-colors">
+            <button onClick={handleExportCSV} className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500">
               <Download size={14} /> Export CSV
             </button>
           </div>
@@ -317,7 +283,7 @@ export function ManageRoutes() {
                 const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
                 const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
 
-                const statusStr = latestTrip?.status || (typeof route.status === 'string' ? route.status.toUpperCase() : 'INACTIVE');
+                const statusStr = latestTrip?.status || 'INACTIVE';
                 const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
                 
                 return (
@@ -339,16 +305,18 @@ export function ManageRoutes() {
                   <td className="px-4 py-3">
                     <span className={clsx(
                       "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-2",
-                      (statusStr === 'ACTIVE' || statusStr === 'ON_SCHEDULE') && "bg-emerald-100 text-emerald-700",
+                      statusStr === 'ON_SCHEDULE' && "bg-emerald-100 text-emerald-700",
                       statusStr === 'DELAYED' && "bg-amber-100 text-amber-700",
-                      (statusStr === 'INACTIVE' || statusStr === 'PLANNED') && "bg-slate-100 text-slate-600",
-                      statusStr === 'OPTIMIZING' && "bg-purple-100 text-purple-700"
+                      statusStr === 'PLANNED' && "bg-sky-100 text-sky-700",
+                      statusStr === 'CANCELLED' && "bg-rose-100 text-rose-700",
+                      (statusStr === 'COMPLETED' || statusStr === 'INACTIVE') && "bg-slate-100 text-slate-600"
                     )}>
-                      {(statusStr === 'ACTIVE' || statusStr === 'ON_SCHEDULE') && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>}
+                      {statusStr === 'ON_SCHEDULE' && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>}
                       {statusStr === 'DELAYED' && <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>}
-                      {(statusStr === 'INACTIVE' || statusStr === 'PLANNED') && <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>}
-                      {statusStr === 'OPTIMIZING' && <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></div>}
-                      {statusStr.replace('_', ' ')}
+                      {statusStr === 'PLANNED' && <div className="w-1.5 h-1.5 rounded-full bg-sky-500"></div>}
+                      {statusStr === 'CANCELLED' && <div className="w-1.5 h-1.5 rounded-full bg-rose-500"></div>}
+                      {(statusStr === 'COMPLETED' || statusStr === 'INACTIVE') && <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>}
+                      {statusStr === 'INACTIVE' ? 'No Trip' : statusStr.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -356,37 +324,42 @@ export function ManageRoutes() {
                       {['ACTIVE', 'ON_SCHEDULE', 'DELAYED'].includes(statusStr) && (
                         <button 
                           onClick={() => handleCancelActiveTrips(route)}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors" 
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500" 
                           title="Cancel Active Trip"
+                          aria-label="Cancel Active Trip"
                         >
                           <XCircle size={14} />
                         </button>
                       )}
                       <Link 
                         href="/map"
-                        className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors" 
+                        className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500" 
                         title="View on Map"
+                        aria-label="View on Map"
                       >
                         <Map size={14} />
                       </Link>
                       <button 
                         onClick={() => handleOpenAssign(route)}
-                        className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors" 
+                        className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500" 
                         title="Assign Bus & Driver"
+                        aria-label="Assign Bus and Driver"
                       >
                         <Users size={14} />
                       </button>
                       <button 
                         onClick={() => handleOpenEdit(route)}
-                        className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors" 
+                        className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500" 
                         title="Edit Route"
+                        aria-label="Edit Route"
                       >
                         <Edit3 size={14} />
                       </button>
                       <button 
                         onClick={() => handleDelete(route.id)}
-                        className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
+                        className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" 
                         title="Delete Route"
+                        aria-label="Delete Route"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -403,7 +376,8 @@ export function ManageRoutes() {
             <button 
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500"
+              aria-label="Previous page"
             >
               &lt;
             </button>
@@ -418,8 +392,10 @@ export function ManageRoutes() {
                 <button 
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
+                  aria-label={`Page ${pageNum}`}
+                  aria-current={currentPage === pageNum ? 'page' : undefined}
                   className={clsx(
-                    "w-7 h-7 flex items-center justify-center rounded font-medium transition-colors",
+                    "w-7 h-7 flex items-center justify-center rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500",
                     currentPage === pageNum ? "bg-orange-600 text-white font-bold" : "hover:bg-slate-50 border border-transparent hover:border-slate-200"
                   )}
                 >
@@ -430,7 +406,8 @@ export function ManageRoutes() {
             <button 
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500"
+              aria-label="Next page"
             >
               &gt;
             </button>
@@ -443,7 +420,7 @@ export function ManageRoutes() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h3 className="font-bold text-slate-900 text-lg">
-                Assign Trip
+                Start a Trip
               </h3>
               <button 
                 onClick={() => setIsAssignModalOpen(false)}
@@ -499,9 +476,9 @@ export function ManageRoutes() {
                 <button 
                   type="submit"
                   disabled={isAssignSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors text-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  {isAssignSubmitting ? 'Assigning...' : 'Assign & Create Trip'}
+                  {isAssignSubmitting ? 'Starting...' : 'Assign & Start Trip'}
                 </button>
               </div>
             </form>

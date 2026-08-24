@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchDrivers, createDriver, fetchBuses, fetchRoutes, createTrip } from '@/lib/api';
+import { fetchDrivers, createDriver, fetchBuses, fetchRoutes, createTrip, updateTripStatus } from '@/lib/api';
 import { User, Mail, Bus, Clock, MoreVertical, X, CheckCircle, Copy } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -84,6 +84,23 @@ export function DriversList() {
       alert('Failed to assign trip. Please try again.');
     } finally {
       setIsAssignSubmitting(false);
+    }
+  };
+
+  const handleUnassignTrip = async (tripId: string) => {
+    console.log("Unassigning trip ID:", tripId);
+    if (!tripId) {
+      alert("Error: No Trip ID found for this assignment.");
+      return;
+    }
+    if (!window.confirm('Are you sure you want to unassign this trip from the driver?')) return;
+    try {
+      // Import updateTripStatus if not already imported
+      await updateTripStatus(tripId, 'CANCELLED');
+      loadData();
+    } catch (err: any) {
+      console.error('Failed to unassign trip', err);
+      alert('Failed to unassign trip. Error: ' + (err.message || 'Unknown error'));
     }
   };
   
@@ -179,12 +196,21 @@ export function DriversList() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button 
-                      onClick={() => handleOpenAssign(driver)}
-                      className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
-                    >
-                      Assign Trip
-                    </button>
+                    {isActive && currentTrip ? (
+                      <button 
+                        onClick={() => handleUnassignTrip(currentTrip.id)}
+                        className="text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
+                      >
+                        Unassign Trip
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => handleOpenAssign(driver)}
+                        className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
+                      >
+                        Assign Trip
+                      </button>
+                    )}
                   </td>
                 </tr>
               )})}

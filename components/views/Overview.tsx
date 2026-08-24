@@ -1,10 +1,18 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers } from '@/lib/api';
+import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket } from '@/lib/api';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
 import DynamicMap from '@/components/map/DynamicMap';
 import { clsx } from 'clsx';
 import Link from 'next/link';
+import { Card, CardHeader } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { MetricCard } from './overview/MetricCard';
+import { LiveMapWidget } from './overview/LiveMapWidget';
+import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
+import { RecentLeavesWidget } from './overview/RecentLeavesWidget';
 
 // --- TypeScript Interfaces add kiye gaye hain ---
 interface Student { name: string; }
@@ -49,7 +57,7 @@ export function Overview() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+    useEffect(() => {
     const loadData = async () => {
       try {
         const [busesData, leavesData, statsData, routesData, driversData] = await Promise.all([
@@ -66,12 +74,41 @@ export function Overview() {
         setDrivers(driversData);
       } catch (error) {
         console.error('Failed to load overview data:', error);
-        toast.error('Failed to load dashboard data');
+        import('react-hot-toast').then(toast => toast.default.error('Failed to load dashboard data'));
       } finally {
         setLoading(false);
       }
     };
     loadData();
+
+    // Socket.io connection for real-time telemetry
+    const socket = connectSocket();
+
+    socket.on('connect', () => {
+      console.log('Connected to fleet socket for Dashboard Map');
+    });
+
+    socket.on('location_update', (data: any) => {
+      setBuses(prev => prev.map(b => {
+        if (b.id === data.busId || b.id === data.id) {
+          return {
+            ...b,
+            status: data.status || b.status,
+            gpsLogs: [{
+              lat: data.lat,
+              lng: data.lng,
+              speed: data.speed ?? 0,
+              timestamp: data.timestamp || new Date().toISOString()
+            }]
+          };
+        }
+        return b;
+      }));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const handleApproveLeave = async (id: string) => {
@@ -125,221 +162,66 @@ export function Overview() {
   }), [routes, drivers]);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8">
       {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <MetricCard 
-          title="Total Students" 
-          value={loading ? '...' : stats?.totalStudents ?? '—'}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6">
+        <MetricCard
+          title="Total Students"
+          value={stats?.totalStudents ?? '—'}
+          loading={loading}
           icon={Users}
-          color="blue" 
+          color="primary"
         />
-        <MetricCard 
-          title="Total Buses" 
-          value={loading ? '...' : stats?.totalBuses ?? '—'}
+        <MetricCard
+          title="Total Buses"
+          value={stats?.totalBuses ?? '—'}
+          loading={loading}
           icon={Bus}
-          color="blue" 
+          color="primary"
         />
-        <MetricCard 
-          title="Total Routes" 
-          value={loading ? '...' : stats?.totalRoutes ?? '—'} 
-          icon={Map} 
-          color="blue" 
+        <MetricCard
+          title="Total Routes"
+          value={stats?.totalRoutes ?? '—'}
+          loading={loading}
+          icon={Map}
+          color="primary"
         />
-        <MetricCard 
-          title="Active Devices" 
-          value={loading ? '...' : stats?.activeDevices ?? '—'}
+        <MetricCard
+          title="Active Devices"
+          value={stats?.activeDevices ?? '—'}
+          loading={loading}
           icon={CheckCircle}
-          color="emerald" 
+          color="success"
         />
-        <MetricCard 
-          title="Offline Devices" 
-          value={loading ? '...' : stats?.offlineDevices ?? '—'}
+        <MetricCard
+          title="Offline Devices"
+          value={stats?.offlineDevices ?? '—'}
+          loading={loading}
           icon={AlertTriangle}
-          color="amber" 
+          color="warning"
         />
-        <MetricCard 
-          title="Pending Leaves" 
-          value={loading ? '...' : stats?.pendingLeaves ?? leaves.length ?? '—'} 
+        <MetricCard
+          title="Pending Leaves"
+          value={stats?.pendingLeaves ?? leaves.length ?? '—'}
+          loading={loading}
           subtitle="Urgent"
-          icon={CalendarDays} 
-          color="slate" 
+          icon={CalendarDays}
+          color="slate"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8">
         {/* Live Fleet Map Widget (Left 2 columns) */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Map size={18} className="text-orange-600" /> Live Fleet Map
-            </h3>
-            <div className="flex gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded">Real-time</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 py-0.5">Heatmap</span>
-            </div>
-          </div>
-          <div className="flex-1 p-0 relative min-h-[400px]">
-             <DynamicMap buses={buses} zoom={11} className="absolute inset-0 z-0 h-full w-full" />
-          </div>
-          
-          <div className="absolute bottom-4 left-4 flex gap-3 text-xs font-medium bg-white/80 backdrop-blur-sm px-3 py-2 rounded-lg border border-slate-200">
-            <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> On Schedule</span>
-            <span className="flex items-center gap-1.5 text-slate-700"><div className="w-2 h-2 rounded-full bg-amber-500"></div> Delayed</span>
-          </div>
-        </div>
+        <LiveMapWidget buses={buses} />
 
         {/* Active Routes & Recent Leaves (Right Column) */}
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-bold text-slate-800">Active Routes</h3>
-              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">{activeTripsList.length} Live</span>
-            </div>
-            
-            <div className="space-y-3">
-              {activeTripsList.length === 0 ? (
-                <div className="text-sm text-slate-500 text-center py-4">No active trips currently.</div>
-              ) : activeTripsList.map((route: any) => (
-                <div key={route.id} className="p-3 border border-slate-100 rounded-lg hover:border-slate-200 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h4 className="font-semibold text-sm text-slate-900">{route.name}</h4>
-                      <p className="text-[11px] text-slate-500">Driver: {route.driver}</p>
-                    </div>
-                    <span className={clsx(
-                      "text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded",
-                      route.type === 'good' ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
-                    )}>
-                      {route.progress}% Done
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2">
-                    <div 
-                      className={clsx("h-1.5 rounded-full", route.type === 'good' ? "bg-emerald-500" : "bg-amber-500")} 
-                      style={{ width: `${route.progress}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600">
-                    <Clock size={12} className={route.type === 'warning' ? "text-amber-500" : "text-slate-400"} />
-                    <span className={route.type === 'warning' ? "text-amber-600" : ""}>{route.eta}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <Link 
-              href="/routes"
-              className="block text-center w-full mt-4 text-xs font-bold text-orange-600 hover:text-orange-700 py-1.5 rounded-md transition-colors"
-            >
-              View All Routes
-            </Link>
-          </div>
+        <div className="space-y-4 md:space-y-6 lg:space-y-8">
+          <ActiveRoutesWidget activeTripsList={activeTripsList} />
         </div>
       </div>
 
       {/* Recent Leave Applications */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-          <h4 className="text-sm font-bold text-slate-800">Recent Leave Applications</h4>
-          <select className="text-xs font-medium border border-slate-200 rounded py-1 px-2 bg-white text-slate-700 outline-none focus:border-orange-500">
-            <option>All Statuses</option>
-            <option>Pending</option>
-          </select>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3 border-b border-slate-100">Student Name</th>
-                <th className="px-4 py-3 border-b border-slate-100">Date</th>
-                <th className="px-4 py-3 border-b border-slate-100">Reason</th>
-                <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {displayLeaves.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    No pending leave applications.
-                  </td>
-                </tr>
-              ) : (
-                displayLeaves.map((leave) => (
-                  <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={clsx("w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px]", leave.color)}>
-                          {leave.initials}
-                        </div>
-                        <span className="font-medium text-slate-900 text-xs">{leave.student}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 font-mono text-[11px]">{leave.date}</td>
-                    <td className="px-4 py-3 text-slate-600 text-xs">{leave.reason}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => handleApproveLeave((leave as any).rawId || (leave as any).id)}
-                          className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
-                        >
-                          Approve
-                        </button>
-                        <button 
-                          onClick={() => handleRejectLeave((leave as any).rawId || (leave as any).id)}
-                          className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-3 py-1 rounded text-xs font-medium transition-colors"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="p-3 border-t border-slate-100 text-center">
-           <Link 
-             href="/leaves"
-             className="inline-block text-[11px] font-bold text-orange-600 hover:text-orange-700 uppercase tracking-wider"
-           >
-             View All Applications
-           </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Subcomponent for Metric Cards
-function MetricCard({ title, value, trend, icon: Icon, color, isWarning = false, subtitle }: any) {
-  const colorStyles: Record<string, string> = {
-    blue: "text-orange-600",
-    amber: "text-amber-500",
-    emerald: "text-emerald-500",
-    slate: "text-slate-500"
-  };
-  
-  const iconColor = colorStyles[color] || "text-slate-500";
-
-  return (
-    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-[104px]">
-      <div className="flex justify-between items-start mb-2">
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</p>
-        <Icon size={16} className={iconColor} />
-      </div>
-      <div className="flex items-end justify-between">
-        <h3 className="text-2xl font-bold text-slate-900 leading-none">{value}</h3>
-        {trend && (
-          <span className={clsx("text-xs font-medium px-2 py-0.5 rounded", trend.startsWith('+') || trend.endsWith('%') ? "text-emerald-600 bg-emerald-50" : "text-amber-600 bg-amber-50")}>
-            {trend}
-          </span>
-        )}
-        {subtitle && (
-          <span className="text-[10px] uppercase font-bold text-slate-400">{subtitle}</span>
-        )}
-      </div>
+      <RecentLeavesWidget displayLeaves={displayLeaves} handleApproveLeave={handleApproveLeave} handleRejectLeave={handleRejectLeave} />
     </div>
   );
 }

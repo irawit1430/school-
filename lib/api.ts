@@ -9,15 +9,11 @@ export const getToken = (): string | null => {
   return null;
 };
 
-export const setToken = async (t: string) => {
+// Stateless JWT: token lives in localStorage and is sent as a Bearer header.
+// (Backend does not use cookies — no server session to sync.)
+export const setToken = (t: string) => {
   if (typeof window !== 'undefined') {
     localStorage.setItem('token', t);
-    // Cookie API ko call karein
-    await fetch('/api/auth/cookie', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: t, action: 'set' })
-    });
   }
 };
 
@@ -30,15 +26,10 @@ export const getUser = (): any => {
 export const setUser = (u: any) =>
   localStorage.setItem(CONFIG.USER_STORAGE_KEY, JSON.stringify(u));
 
-export const clearAuth = async () => {
+export const clearAuth = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');
     localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
-    await fetch('/api/auth/cookie', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear' })
-    });
   }
 };
 
@@ -282,9 +273,8 @@ export const createTrip = async (data: { routeId: string; busId: string; driverI
   return api(`/schools/${schoolId}/trips`, { method: 'POST', body: data });
 };
 
-export const updateTripStatus = async (tripId: string, status: 'COMPLETED' | 'CANCELLED') => {
-  return api(`/trips/${tripId}`, { method: 'PATCH', body: { status } });
-};
+export const updateTripStatus = async (tripId: string, status: string) =>
+  api(`/trips/${tripId}`, { method: 'PUT', body: { status } });
 
 // ─── Attendance ────────────────────────────────────────────
 export const fetchTodayAttendance = async () => {
@@ -323,3 +313,29 @@ export const searchGlobal = (query: string) =>
 // ─── Device Locations (for Live Map initial load) ──────────
 export const fetchDeviceLocations = () =>
   api('/devices/locations');
+export const importStudentsCSV = async (file: File) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const token = getToken();
+  const res = await fetch(`${API_BASE}/schools/${schoolId}/students/import`, {
+    method: 'POST',
+    headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+    body: formData
+  });
+
+  if (res.status === 401) {
+    clearAuth();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new ApiError('Session expired', 401);
+  }
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(data.error || 'Failed to import students', res.status, data.issues);
+  }
+  return data;
+};

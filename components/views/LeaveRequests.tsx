@@ -11,6 +11,7 @@ export function LeaveRequests() {
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   const loadLeaves = () => {
     setLoading(true);
@@ -32,23 +33,51 @@ export function LeaveRequests() {
   }, [statusFilter]);
 
   const handleApprove = async (id: string) => {
+    setProcessingId(id);
     try {
       await approveLeave(id);
       loadLeaves();
     } catch (err) {
       console.error(err);
       alert('Failed to approve leave');
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleReject = async (id: string) => {
+    setProcessingId(id);
     try {
       await rejectLeave(id);
       loadLeaves();
     } catch (err) {
       console.error(err);
       alert('Failed to reject leave');
+    } finally {
+      setProcessingId(null);
     }
+  };
+
+  const handleExportCSV = () => {
+    if (leaves.length === 0) return alert('No leaves to export');
+    const headers = ['Student Name,RFID,Start Date,End Date,Reason,Status'];
+    const rows = leaves.map((leave: any) => {
+      const studentName = leave.student?.name || 'Unknown';
+      const rfid = leave.student?.rfidTag || 'N/A';
+      const startDate = new Date(leave.startDate).toLocaleDateString();
+      const endDate = new Date(leave.endDate).toLocaleDateString();
+      const status = leave.status || 'PENDING';
+      return `"${studentName}","${rfid}","${startDate}","${endDate}","${leave.reason}","${status}"`;
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "leaves_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const getStatusBadge = (status: string) => {
@@ -70,7 +99,7 @@ export function LeaveRequests() {
           <p className="text-sm text-slate-500 mt-1">Manage and track student leave applications</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 px-4 py-2 border border-slate-200 rounded-lg transition-colors shadow-sm">
+          <button onClick={handleExportCSV} className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 px-4 py-2 border border-slate-200 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500">
             <Download size={16} /> Export
           </button>
         </div>
@@ -171,15 +200,17 @@ export function LeaveRequests() {
                             <>
                               <button 
                                 onClick={() => handleApprove(leave.id)}
-                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                                disabled={processingId === leave.id}
+                                className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Approve
+                                {processingId === leave.id ? '...' : 'Approve'}
                               </button>
                               <button 
                                 onClick={() => handleReject(leave.id)}
-                                className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm"
+                                disabled={processingId === leave.id}
+                                className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                Reject
+                                {processingId === leave.id ? '...' : 'Reject'}
                               </button>
                             </>
                           ) : (
