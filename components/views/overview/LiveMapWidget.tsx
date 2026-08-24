@@ -11,7 +11,7 @@ export function LiveMapWidget({ buses }: { buses: any[] }) {
         </h3>
         <div className="flex gap-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded">Real-time</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 py-0.5">Heatmap</span>
+          
         </div>
       </div>
       <div className="flex-1 p-0 relative min-h-[400px]">
