@@ -87,11 +87,11 @@ function MapController({
       document.documentElement.style.setProperty('--marker-transition', 'none');
     };
     const handleMoveEnd = () => {
-      document.documentElement.style.setProperty('--marker-transition', 'transform 0.8s linear');
+      document.documentElement.style.setProperty('--marker-transition', 'transform 1s linear');
     };
     
     // Set initial value
-    document.documentElement.style.setProperty('--marker-transition', 'transform 0.8s linear');
+    document.documentElement.style.setProperty('--marker-transition', 'transform 1s linear');
 
     map.on('movestart', handleMoveStart);
     map.on('moveend', handleMoveEnd);
@@ -185,7 +185,7 @@ export default function RealMap({
       {/* Global CSS for Smooth Marker Transitions and Leaflet Styling */}
       <style jsx global>{`
         .leaflet-marker-icon.smooth-bus-marker {
-          transition: var(--marker-transition, transform 0.8s linear) !important;
+          transition: var(--marker-transition, transform 1s linear) !important;
         }
         .leaflet-pane {
           z-index: 10 !important;
