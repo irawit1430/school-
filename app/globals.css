@@ -7,28 +7,28 @@
    ───────────────────────────────────────────────────────────── */
 @theme {
   /* Brand / Primary (warm orange) */
-  --color-primary: #ea580c;        /* orange-600 */
-  --color-primary-hover: #c2410c;  /* orange-700 */
-  --color-primary-soft: #fff7ed;   /* orange-50  */
-  --color-primary-softtext: #c2410c;
+  --color-primary: #463A6B;        /* orange-600 */
+  --color-primary-hover: #3B315A;  /* orange-700 */
+  --color-primary-soft: #EFEBF7;   /* orange-50  */
+  --color-primary-softtext: #463A6B;
 
   /* Semantic status */
-  --color-success: #059669;        /* emerald-600 */
-  --color-success-soft: #ecfdf5;   /* emerald-50  */
-  --color-warning: #f59e0b;        /* amber-500   */
-  --color-warning-soft: #fffbeb;   /* amber-50    */
-  --color-danger: #e11d48;         /* rose-600    */
-  --color-danger-hover: #be123c;   /* rose-700    */
-  --color-danger-soft: #fff1f2;    /* rose-50     */
+  --color-success: #2F8F63;        /* emerald-600 */
+  --color-success-soft: #E6F4EC;   /* emerald-50  */
+  --color-warning: #C9762F;        /* amber-500   */
+  --color-warning-soft: #FDF1E4;   /* amber-50    */
+  --color-danger: #B3261E;         /* rose-600    */
+  --color-danger-hover: #8E1E17;   /* rose-700    */
+  --color-danger-soft: #FBEAE8;    /* rose-50     */
   --color-info: #0ea5e9;           /* sky-500     */
 
   /* Surfaces & text */
-  --color-app-bg: #f8fafc;         /* slate-50  */
-  --color-sidebar: #0f172a;        /* slate-900 */
-  --color-surface: #ffffff;
-  --color-surface-border: #e2e8f0; /* slate-200 */
-  --color-text-strong: #0f172a;    /* slate-900 */
-  --color-text-muted: #64748b;     /* slate-500 */
+  --color-app-bg: #FAF6F1;         /* slate-50  */
+  --color-sidebar: #FAF6F1;        /* slate-900 */
+  --color-surface: #FFFFFF;
+  --color-surface-border: #EDE5DC; /* slate-200 */
+  --color-text-strong: #2B2521;    /* slate-900 */
+  --color-text-muted: #6F6660;     /* slate-500 */
 }
 
 /* ─── Global base styles ─── */
@@ -66,3 +66,5 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
+@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800&display=swap');
+h1, h2, h3 { font-family: 'Gabarito', sans-serif; }
