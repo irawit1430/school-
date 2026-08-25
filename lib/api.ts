@@ -297,14 +297,23 @@ export const createDriver = async (data: { name: string; email: string }) => {
 };
 
 // ─── Notifications ─────────────────────────────────────────
-export const fetchNotifications = (limit = 20) =>
-  api(`/notifications?limit=${limit}`);
+export const fetchNotifications = async (limit = 20) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) return [];
+  return api(`/schools/${schoolId}/notifications?limit=${limit}`);
+};
 
-export const markAllNotificationsRead = () =>
-  api('/notifications/mark-read', { method: 'POST' });
+export const markAllNotificationsRead = async () => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) return;
+  return api(`/schools/${schoolId}/notifications/mark-read`, { method: 'POST' });
+};
 
-export const markNotificationRead = (id: string) =>
-  api(`/notifications/${id}/read`, { method: 'POST' });
+export const markNotificationRead = async (id: string) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) return;
+  return api(`/schools/${schoolId}/notifications/${id}/read`, { method: 'POST' });
+};
 
 // ─── Search ────────────────────────────────────────────────
 export const searchGlobal = (query: string) =>
