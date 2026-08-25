@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { Bus, Lock, Mail, ArrowRight } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 import { useRouter } from 'next/navigation';
 import { login } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
@@ -87,9 +88,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-            <Bus size={28} />
-          </div>
+          <Logo className="w-16 h-16" variant="light" />
         </div>
         <h2 className="mt-6 text-center text-2xl font-bold tracking-tight text-slate-900">
           {isResetMode ? 'Reset Default Password' : 'Sign in to your account'}

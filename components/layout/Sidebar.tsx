@@ -5,6 +5,7 @@ import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriang
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
+import { Logo } from '../ui/Logo';
 import toast from 'react-hot-toast';
 import { clearAuth } from '@/lib/api';
 
@@ -60,9 +61,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       >
       <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="bg-primary text-white p-2 rounded-lg">
-            <Bus size={24} />
-          </div>
+          <Logo className="w-10 h-10" variant="dark" />
           <div>
             <h1 className="font-bold text-lg text-white leading-tight">Voltava</h1>
             <p className="text-xs text-slate-400 font-medium">India HQ</p>
