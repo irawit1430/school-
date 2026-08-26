@@ -243,9 +243,9 @@ export function StudentsAttendance() {
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
-          student.name.toLowerCase().includes(query) ||
-          student.tag.toLowerCase().includes(query) ||
-          student.route.toLowerCase().includes(query)
+          String(student.name || '').toLowerCase().includes(query) ||
+          String(student.tag || '').toLowerCase().includes(query) ||
+          String(student.route || '').toLowerCase().includes(query)
         );
       }
       return true;

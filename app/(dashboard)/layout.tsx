@@ -11,11 +11,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
     const token = getToken();
     if (!token) {
       router.replace('/login');
+    } else {
+      setIsAuth(true);
     }
   }, [router]);
 
@@ -23,6 +26,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  if (!isAuth) return null;
 
   return (
     <div className="flex min-h-screen bg-slate-50 relative">

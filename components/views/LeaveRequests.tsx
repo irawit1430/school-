@@ -120,8 +120,8 @@ export function LeaveRequests() {
               <option value="REJECTED">Rejected</option>
             </select>
           </div>
-          <div className="text-xs font-semibold text-slate-500">
-            {loading ? 'Loading...' : `${leaves.length} Applications`}
+          <div className="text-xs font-semibold text-slate-500 flex items-center gap-2">
+            {loading ? <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div> Loading...</> : `${leaves.length} Applications`}
           </div>
         </div>
 

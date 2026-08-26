@@ -48,6 +48,10 @@ export function BusesList() {
       toast.error('Please fill all fields');
       return;
     }
+    if (parseInt(formData.capacity) <= 0) {
+      toast.error('Capacity must be greater than 0');
+      return;
+    }
     setIsSubmitting(true);
     try {
       await createBus({

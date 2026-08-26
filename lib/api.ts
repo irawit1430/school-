@@ -201,7 +201,14 @@ export function connectSocket(): Socket {
 }
 
 // ─── Stats ─────────────────────────────────────────────────
-export const fetchStats = () => api('/stats');
+export const fetchStats = async () => {
+  try {
+    return await api('/stats');
+  } catch (err) {
+    console.error('Failed to fetch stats:', err);
+    return {};
+  }
+};
 
 // ─── Buses ─────────────────────────────────────────────────
 export const fetchBuses = async () => {
