@@ -53,6 +53,7 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
+  const skipPollUntil = useRef<number>(0);
 
   useEffect(() => {
     // Populate user details from local storage
@@ -84,6 +85,8 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   // Fetch notifications
   const fetchNotifications = async () => {
     if (!token) return;
+    // Don't overwrite optimistic state right after mark-read
+    if (Date.now() < skipPollUntil.current) return;
     try {
       const data = await fetchNotifs();
       if (Array.isArray(data)) {
@@ -156,22 +159,33 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
 
   const markAllAsRead = async () => {
     if (!token) return;
+    // Optimistic update + cooldown to prevent poll from reverting
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    skipPollUntil.current = Date.now() + 15000;
     try {
       await markAllNotificationsRead();
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     } catch (error) {
       console.error('Failed to mark all as read:', error);
+      toast.error('Failed to mark notifications as read');
+      // Revert by re-fetching
+      skipPollUntil.current = 0;
+      fetchNotifications();
     }
   };
 
   const markAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!token) return;
+    // Optimistic update + cooldown
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    skipPollUntil.current = Date.now() + 15000;
     try {
       await markNotificationRead(id);
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     } catch (error) {
       console.error('Failed to mark as read:', error);
+      toast.error('Failed to mark notification as read');
+      skipPollUntil.current = 0;
+      fetchNotifications();
     }
   };
 
