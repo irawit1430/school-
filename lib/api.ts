@@ -278,6 +278,15 @@ export const createTrip = async (data: { routeId: string; busId: string; driverI
 export const updateTripStatus = async (tripId: string, status: string) =>
   api(`/trips/${tripId}`, { method: 'PUT', body: { status } });
 
+export const updateTrip = async (tripId: string, data: {
+  routeId?: string;
+  busId?: string;
+  driverId?: string;
+  scheduledStart?: string;
+}) => {
+  return api(`/trips/${tripId}`, { method: 'PUT', body: data });
+};
+
 // ─── Attendance ────────────────────────────────────────────
 export const fetchTodayAttendance = async () => {
   const schoolId = await getSchoolId();
@@ -316,9 +325,17 @@ export const markNotificationRead = async (id: string) => {
   return api(`/notifications/${id}/read`, { method: 'POST' });
 };
 
+export const updateParentPassword = async (parentId: string, password: string) => {
+  return api(`/parents/${parentId}`, { method: 'PUT', body: { password } });
+};
+
 // ─── Search ────────────────────────────────────────────────
 export const searchGlobal = (query: string) =>
   api(`/search?q=${encodeURIComponent(query)}`);
+
+// ─── Broadcast ─────────────────────────────────────────────
+export const sendBroadcast = async (data: any) => 
+  api('/broadcast', { method: 'POST', body: data });
 
 // ─── Device Locations (for Live Map initial load) ──────────
 export const fetchDeviceLocations = () =>

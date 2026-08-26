@@ -10,6 +10,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { EditTripModal } from '@/components/views/routes/EditTripModal';
 
 const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
 
@@ -48,9 +49,11 @@ export function ManageRoutes() {
   const [editingRoute, setEditingRoute] = useState<any>(null);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignFormData, setAssignFormData] = useState({ routeId: '', busId: '', driverId: '' });
+  const [assignFormData, setAssignFormData] = useState({ routeId: '', busId: '', driverId: '', scheduledStart: '' });
   const [assignRouteName, setAssignRouteName] = useState('');
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+
+  const [editingTrip, setEditingTrip] = useState<any>(null);
 
   const loadRoutes = () => {
     setLoading(true);
@@ -88,7 +91,7 @@ export function ManageRoutes() {
   const handleOpenAssign = (route: any) => {
     const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
     setAssignRouteName(route.name);
-    setAssignFormData({ routeId: route.id, busId: latestTrip?.busId || '', driverId: latestTrip?.driverId || '' });
+    setAssignFormData({ routeId: route.id, busId: latestTrip?.busId || '', driverId: latestTrip?.driverId || '', scheduledStart: '' });
     setIsAssignModalOpen(true);
   };
 
@@ -96,11 +99,15 @@ export function ManageRoutes() {
     e.preventDefault();
     setIsAssignSubmitting(true);
     try {
-      await createTrip({
+      const payload: any = {
         routeId: assignFormData.routeId,
         busId: assignFormData.busId,
         driverId: assignFormData.driverId
-      });
+      };
+      if (assignFormData.scheduledStart) {
+        payload.scheduledStart = new Date(assignFormData.scheduledStart).toISOString();
+      }
+      await createTrip(payload);
       setIsAssignModalOpen(false);
       loadRoutes(); // Refresh to show assignment
     } catch (err: any) {
@@ -346,14 +353,24 @@ export function ManageRoutes() {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2 transition-opacity">
                       {ACTIVE_TRIP_STATUSES.includes(statusStr) && (
-                        <button 
-                          onClick={() => handleCancelActiveTrips(route)}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500" 
-                          title="Cancel Active Trip"
-                          aria-label="Cancel Active Trip"
-                        >
-                          <XCircle size={14} />
-                        </button>
+                        <>
+                          <button 
+                            onClick={() => setEditingTrip(latestTrip)}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                            title="Edit Trip"
+                            aria-label="Edit Trip"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button 
+                            onClick={() => handleCancelActiveTrips(route)}
+                            className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500" 
+                            title="Cancel Active Trip"
+                            aria-label="Cancel Active Trip"
+                          >
+                            <XCircle size={14} />
+                          </button>
+                        </>
                       )}
                       <Link
                         href={`/map?route=${encodeURIComponent(route.name)}`}
@@ -465,9 +482,19 @@ export function ManageRoutes() {
                 <SearchableSelect 
                   options={buses.map((bus: any) => ({
                     value: bus.id,
-                    label: bus.licensePlate,
-                    subLabel: bus.capacity ? `${bus.capacity} seats` : undefined
-                  }))}
+                    label: (
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${bus.isAvailable !== false ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className={bus.isAvailable === false ? 'text-slate-400' : ''}>{bus.licensePlate}</span>
+                      </div>
+                    ),
+                    subLabel: bus.capacity ? `${bus.capacity} seats` : undefined,
+                    searchValue: bus.licensePlate
+                  })).sort((a, b) => {
+                    const aAvail = buses.find(bus => bus.id === a.value)?.isAvailable !== false;
+                    const bAvail = buses.find(bus => bus.id === b.value)?.isAvailable !== false;
+                    return aAvail === bAvail ? 0 : aAvail ? -1 : 1;
+                  })}
                   value={assignFormData.busId}
                   onChange={(val) => setAssignFormData({...assignFormData, busId: val})}
                   placeholder="Select a bus"
@@ -480,12 +507,33 @@ export function ManageRoutes() {
                 <SearchableSelect 
                   options={drivers.map((driver: any) => ({
                     value: driver.id,
-                    label: driver.name,
-                    subLabel: driver.email
-                  }))}
+                    label: (
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${driver.isAvailable !== false ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className={driver.isAvailable === false ? 'text-slate-400' : ''}>{driver.name}</span>
+                      </div>
+                    ),
+                    subLabel: driver.email,
+                    searchValue: driver.name
+                  })).sort((a, b) => {
+                    const aAvail = drivers.find(d => d.id === a.value)?.isAvailable !== false;
+                    const bAvail = drivers.find(d => d.id === b.value)?.isAvailable !== false;
+                    return aAvail === bAvail ? 0 : aAvail ? -1 : 1;
+                  })}
                   value={assignFormData.driverId}
                   onChange={(val) => setAssignFormData({...assignFormData, driverId: val})}
                   placeholder="Select a driver"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Scheduled Start
+                </label>
+                <input 
+                  type="datetime-local" 
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  value={assignFormData.scheduledStart}
+                  onChange={(e) => setAssignFormData({...assignFormData, scheduledStart: e.target.value})}
                 />
               </div>
               
@@ -527,6 +575,18 @@ export function ManageRoutes() {
           </div>
         </div>
       )}
+
+      <EditTripModal
+        isOpen={!!editingTrip}
+        onClose={() => setEditingTrip(null)}
+        trip={editingTrip}
+        buses={buses}
+        drivers={drivers}
+        onSuccess={() => {
+          setEditingTrip(null);
+          loadRoutes();
+        }}
+      />
     </div>
   );
 }

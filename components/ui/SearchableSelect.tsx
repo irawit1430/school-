@@ -4,8 +4,9 @@ import { clsx } from 'clsx';
 
 export interface Option {
   value: string;
-  label: string;
+  label: React.ReactNode | string;
   subLabel?: string;
+  searchValue?: string;
 }
 
 interface SearchableSelectProps {
@@ -32,10 +33,11 @@ export function SearchableSelect({ options, value, onChange, placeholder, label,
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredOptions = options.filter(opt => 
-    opt.label.toLowerCase().includes(query.toLowerCase()) || 
-    (opt.subLabel && opt.subLabel.toLowerCase().includes(query.toLowerCase()))
-  );
+  const filteredOptions = options.filter(opt => {
+    const searchString = opt.searchValue || (typeof opt.label === 'string' ? opt.label : '');
+    return searchString.toLowerCase().includes(query.toLowerCase()) || 
+           (opt.subLabel && opt.subLabel.toLowerCase().includes(query.toLowerCase()));
+  });
 
   const selectedOption = options.find(opt => opt.value === value);
 

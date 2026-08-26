@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Bus, Map, Route, Users, CalendarDays, Settings, HelpCircle, AlertTriangle, LogOut, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -8,6 +8,7 @@ import { clsx } from 'clsx';
 import { Logo } from '../ui/Logo';
 import toast from 'react-hot-toast';
 import { clearAuth } from '@/lib/api';
+import { BroadcastModal } from '../views/BroadcastModal';
 
 interface SidebarProps {
   open?: boolean;
@@ -17,6 +18,7 @@ interface SidebarProps {
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const [showBroadcast, setShowBroadcast] = useState(false);
 
   const handleLogout = async () => {
     await clearAuth();
@@ -24,7 +26,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   };
 
   const handleEmergencyBroadcast = () => {
-    toast('Emergency Broadcast is not available yet.', { icon: '🚧' });
+    setShowBroadcast(true);
   };
 
   const handleComingSoon = (feature: string) => {
@@ -132,6 +134,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
       </div>
       </aside>
+      <BroadcastModal isOpen={showBroadcast} onClose={() => setShowBroadcast(false)} />
     </>
   );
 }

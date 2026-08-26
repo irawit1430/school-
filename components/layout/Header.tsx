@@ -8,7 +8,8 @@ import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route, Menu } from 'lucid
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
-import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, searchGlobal, getUser, getToken, clearAuth } from '@/lib/api';
+import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, searchGlobal, getUser, getToken, clearAuth, connectSocket, updateParentPassword } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 interface HeaderProps {
   title?: string;
@@ -25,6 +26,8 @@ interface SearchResult {
 
 interface Notification {
   id: string;
+  type?: string;
+  metadata?: any;
   title: string;
   message: string;
   isRead: boolean;
@@ -94,7 +97,19 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   useEffect(() => {
     fetchNotifications();
     const notifTimer = setInterval(fetchNotifications, 60000); // Poll every minute
-    return () => clearInterval(notifTimer);
+    
+    let socket: any = null;
+    if (token) {
+      socket = connectSocket();
+      socket.on('notification', (newNotif: Notification) => {
+        setNotifications(prev => [newNotif, ...prev]);
+      });
+    }
+
+    return () => {
+      clearInterval(notifTimer);
+      if (socket) socket.disconnect();
+    };
   }, [token]);
 
   // Click outside handlers
@@ -157,6 +172,24 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     } catch (error) {
       console.error('Failed to mark as read:', error);
+    }
+  };
+
+  const handleResetPassword = async (notif: Notification, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!token || !notif.metadata?.userId) return;
+    
+    const newPassword = window.prompt('Enter new temporary password:');
+    if (!newPassword) return;
+    
+    try {
+      await updateParentPassword(notif.metadata.userId, newPassword);
+      toast.success(`Password reset successful. Temporary password is: ${newPassword}`, { duration: 6000 });
+      await markNotificationRead(notif.id);
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
+    } catch (error) {
+      toast.error('Failed to reset password');
+      console.error('Failed to reset password:', error);
     }
   };
 
@@ -298,12 +331,21 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
                               </div>
                             </div>
                             {!notif.isRead && (
-                              <button 
-                                onClick={(e) => markAsRead(notif.id, e)}
-                                className="opacity-0 group-hover:opacity-100 text-xs text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap self-start"
-                              >
-                                Mark read
-                              </button>
+                              notif.type === 'PASSWORD_RESET' ? (
+                                <button 
+                                  onClick={(e) => handleResetPassword(notif, e)}
+                                  className="opacity-0 group-hover:opacity-100 text-xs font-semibold text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap self-start"
+                                >
+                                  Reset Password
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={(e) => markAsRead(notif.id, e)}
+                                  className="opacity-0 group-hover:opacity-100 text-xs text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap self-start"
+                                >
+                                  Mark read
+                                </button>
+                              )
                             )}
                           </div>
                         </li>
