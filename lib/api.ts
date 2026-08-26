@@ -67,6 +67,7 @@ async function api<T = any>(
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
+      cache: 'no-store',
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -298,21 +299,20 @@ export const createDriver = async (data: { name: string; email: string }) => {
 
 // ─── Notifications ─────────────────────────────────────────
 export const fetchNotifications = async (limit = 20) => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) return [];
-  return api(`/schools/${schoolId}/notifications?limit=${limit}`);
+  try {
+    return await api(`/notifications?limit=${limit}`);
+  } catch (err) {
+    console.error('Failed to fetch notifications:', err);
+    return [];
+  }
 };
 
 export const markAllNotificationsRead = async () => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) return;
-  return api(`/schools/${schoolId}/notifications/mark-read`, { method: 'POST' });
+  return api(`/notifications/mark-read`, { method: 'POST' });
 };
 
 export const markNotificationRead = async (id: string) => {
-  const schoolId = await getSchoolId();
-  if (!schoolId) return;
-  return api(`/schools/${schoolId}/notifications/${id}/read`, { method: 'POST' });
+  return api(`/notifications/${id}/read`, { method: 'POST' });
 };
 
 // ─── Search ────────────────────────────────────────────────
