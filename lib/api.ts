@@ -310,7 +310,16 @@ export const createDriver = async (data: { name: string; email: string }) => {
 // ─── Notifications ─────────────────────────────────────────
 export const fetchNotifications = async (limit = 20) => {
   try {
-    return await api(`/notifications?limit=${limit}`);
+    const res = await api(`/notifications?limit=${limit}`);
+    const list = Array.isArray(res) ? res : (res?.data || res?.notifications || []);
+    return list.map((n: any) => ({
+      ...n,
+      id: n.id || n._id || String(n.notificationId || ''),
+      isRead: Boolean(n.isRead ?? n.read ?? (n.status === 'READ') ?? (n.readAt != null)),
+      title: n.title || 'Notification',
+      message: n.message || n.body || n.content || '',
+      createdAt: n.createdAt || n.created_at || n.timestamp || new Date().toISOString(),
+    }));
   } catch (err) {
     console.error('Failed to fetch notifications:', err);
     return [];
@@ -318,11 +327,11 @@ export const fetchNotifications = async (limit = 20) => {
 };
 
 export const markAllNotificationsRead = async () => {
-  return api(`/notifications/mark-read`, { method: 'POST' });
+  return api(`/notifications/mark-read`, { method: 'POST', body: {} });
 };
 
 export const markNotificationRead = async (id: string) => {
-  return api(`/notifications/${id}/read`, { method: 'POST' });
+  return api(`/notifications/${id}/read`, { method: 'POST', body: {} });
 };
 
 export const updateParentPassword = async (parentId: string, password: string) => {
