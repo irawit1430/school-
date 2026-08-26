@@ -256,7 +256,8 @@ export const createStudent = async (data: {
   rfidTag?: string;
   grade?: string;
   parentEmail?: string;
-  parentName?: string;
+    parentName?: string;
+    guardianPhone?: string;
 }) => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);

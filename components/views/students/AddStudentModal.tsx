@@ -43,7 +43,7 @@ export function AddStudentModal({
               type="text"
               value={formData.rfidTag}
               onChange={(e) => setFormData({...formData, rfidTag: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
               placeholder="e.g. RFID-123456789"
             />
           </div>
@@ -56,7 +56,7 @@ export function AddStudentModal({
               required
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
               placeholder="e.g. John Doe"
             />
           </div>
@@ -68,7 +68,7 @@ export function AddStudentModal({
               type="text"
               value={formData.grade}
               onChange={(e) => setFormData({...formData, grade: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
               placeholder="e.g. 10th"
             />
           </div>
@@ -81,7 +81,7 @@ export function AddStudentModal({
               required
               value={formData.parentName}
               onChange={(e) => setFormData({...formData, parentName: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
               placeholder="e.g. Mr. Smith"
             />
           </div>
@@ -94,7 +94,7 @@ export function AddStudentModal({
               required
               value={formData.parentEmail}
               onChange={(e) => setFormData({...formData, parentEmail: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
               placeholder="e.g. alex.parent@example.com"
             />
           </div>
@@ -114,6 +114,18 @@ export function AddStudentModal({
             >
               {isSubmitting ? 'Registering...' : 'Register Student'}
             </button>
+          </div>
+                  <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Guardian Phone
+            </label>
+            <input 
+              type="tel"
+              value={formData.guardianPhone || ''}
+              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+              placeholder="e.g. +91 9876543210"
+            />
           </div>
         </form>
       </div>

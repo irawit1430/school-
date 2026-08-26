@@ -40,6 +40,10 @@ export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModa
               <span className="text-slate-500 font-semibold text-sm">Assigned Route</span>
               <span className="text-slate-900 font-bold text-sm">{viewStudent.route}</span>
             </div>
+                        <div className="flex justify-between border-b border-slate-100 pb-2">
+              <span className="text-slate-500 font-semibold text-sm">Guardian Phone</span>
+              <span className="text-slate-900 font-bold text-sm">{viewStudent.guardianPhone || 'N/A'}</span>
+            </div>
             <div className="flex justify-between border-b border-slate-100 pb-2">
               <span className="text-slate-500 font-semibold text-sm">Status</span>
               <span className={clsx(

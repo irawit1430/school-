@@ -29,7 +29,7 @@ export function StudentsAttendance() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '' });
+  const [formData, setFormData] = useState({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [credentialsPopup, setCredentialsPopup] = useState<any>(null);
 
@@ -115,7 +115,7 @@ export function StudentsAttendance() {
   };
 
   const handleOpenCreate = () => {
-    setFormData({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '' });
+    setFormData({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' });
     setIsModalOpen(true);
   };
 
@@ -128,7 +128,8 @@ export function StudentsAttendance() {
         name: formData.name,
         grade: formData.grade || undefined,
         parentEmail: formData.parentEmail || undefined,
-        parentName: formData.parentName || undefined
+        parentName: formData.parentName || undefined,
+        guardianPhone: formData.guardianPhone || undefined
       };
       
       const res = await createStudent(payload);
