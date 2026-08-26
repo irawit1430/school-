@@ -315,7 +315,7 @@ export const fetchNotifications = async (limit = 20) => {
     return list.map((n: any) => ({
       ...n,
       id: n.id || n._id || String(n.notificationId || ''),
-      isRead: Boolean(n.isRead ?? n.read ?? (n.status === 'READ') ?? (n.readAt != null)),
+      isRead: typeof n.isRead === 'boolean' ? n.isRead : (typeof n.read === 'boolean' ? n.read : Boolean(n.readAt || n.status === 'READ')),
       title: n.title || 'Notification',
       message: n.message || n.body || n.content || '',
       createdAt: n.createdAt || n.created_at || n.timestamp || new Date().toISOString(),
