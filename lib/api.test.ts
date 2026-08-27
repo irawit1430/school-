@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, rejectLeave, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -37,7 +37,7 @@ describe('fetchBuses', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockBuses,
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await fetchBuses();
@@ -67,7 +67,7 @@ describe('fetchBuses', () => {
 
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,
-    } as Response);
+    } as unknown as Response);
 
     // Execute & Assert
     await expect(fetchBuses()).rejects.toThrow('Failed to fetch buses');
@@ -81,14 +81,14 @@ describe('fetchBuses', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => [{ id: 'super-school-1' }],
-    } as Response);
+    } as unknown as Response);
 
     // Second fetch for buses
     const mockBuses = [{ id: 'bus-2', name: 'Bus 2' }];
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockBuses,
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await fetchBuses();
@@ -116,7 +116,7 @@ describe('fetchRoutes', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockRoutes,
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await fetchRoutes();
@@ -146,7 +146,7 @@ describe('fetchRoutes', () => {
 
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,
-    } as Response);
+    } as unknown as Response);
 
     // Execute & Assert
     await expect(fetchRoutes()).rejects.toThrow('Failed to fetch routes');
@@ -160,14 +160,14 @@ describe('fetchRoutes', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => [{ id: 'super-school-1' }],
-    } as Response);
+    } as unknown as Response);
 
     // Second fetch for routes
     const mockRoutes = [{ id: 'route-2', name: 'Route 2' }];
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockRoutes,
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await fetchRoutes();
@@ -193,7 +193,7 @@ describe('assignStudentToStop', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       text: async () => 'Invalid JSON Response',
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await assignStudentToStop(mockData);
@@ -217,7 +217,7 @@ describe('assignStudentToStop', () => {
       ok: false,
       status: 500,
       text: async () => { throw new Error('Text reading error'); },
-    } as Response);
+    } as unknown as Response);
 
     // Execute & Assert
     await expect(assignStudentToStop(mockData)).rejects.toThrow('Failed to assign student');
@@ -231,7 +231,7 @@ describe('assignStudentToStop', () => {
       ok: false,
       status: 400,
       text: async () => longErrorText,
-    } as Response);
+    } as unknown as Response);
 
     // Execute & Assert
     await expect(assignStudentToStop(mockData)).rejects.toThrow(`Failed to assign student (HTTP 400): ${'A'.repeat(100)}`);
@@ -244,7 +244,7 @@ describe('assignStudentToStop', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       text: async () => JSON.stringify(mockResponse),
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await assignStudentToStop(mockData);
@@ -259,7 +259,7 @@ describe('assignStudentToStop', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       text: async () => '',
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await assignStudentToStop(mockData);
@@ -286,7 +286,7 @@ describe('createStudent', () => {
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
-    } as Response);
+    } as unknown as Response);
 
     // Execute
     const result = await createStudent(mockStudentData);
@@ -321,9 +321,55 @@ describe('createStudent', () => {
 
     vi.mocked(global.fetch).mockResolvedValueOnce({
       ok: false,
-    } as Response);
+    } as unknown as Response);
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+  });
+});
+
+describe('rejectLeave', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should reject leave successfully and return parsed JSON', async () => {
+    // Setup
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockLeaveId = 'leave-123';
+    const mockResponse = { success: true, message: 'Leave rejected' };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as unknown as Response);
+
+    // Execute
+    const result = await rejectLeave(mockLeaveId);
+
+    // Assert
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/leaves/${mockLeaveId}/reject`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+    });
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('token', 'fake-token');
+    const mockLeaveId = 'leave-123';
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as unknown as Response);
+
+    // Execute & Assert
+    await expect(rejectLeave(mockLeaveId)).rejects.toThrow('Failed to reject leave');
   });
 });
