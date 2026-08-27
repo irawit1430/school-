@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, createRoute, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -325,5 +325,69 @@ describe('createStudent', () => {
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+  });
+});
+
+describe('createRoute', () => {
+  beforeEach(() => {
+    // Reset localStorage and fetch mock before each test
+    const localStorageMock = window.localStorage;
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should create a route successfully when schoolId is present', async () => {
+    // Setup
+    const localStorageMock = window.localStorage;
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockRouteData = { name: 'Route A', estimatedDuration: 45 };
+    const mockResponse = { id: 'route-1', ...mockRouteData };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    // Execute
+    const result = await createRoute(mockRouteData);
+
+    // Assert
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/routes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(mockRouteData),
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    // Setup
+    const localStorageMock = window.localStorage;
+    localStorageMock.setItem('user', JSON.stringify({ role: 'ADMIN' }));
+
+    const mockRouteData = { name: 'Route A' };
+
+    // Execute & Assert
+    await expect(createRoute(mockRouteData)).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    const localStorageMock = window.localStorage;
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    const mockRouteData = { name: 'Route A' };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(createRoute(mockRouteData)).rejects.toThrow('Failed to create route');
   });
 });
