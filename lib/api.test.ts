@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE, clearSchoolIdCache } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -26,6 +26,7 @@ describe('fetchBuses', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
   });
 
   it('should fetch buses successfully when schoolId is present in user localStorage', async () => {
@@ -105,6 +106,7 @@ describe('fetchRoutes', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
   });
 
   it('should fetch routes successfully when schoolId is present in user localStorage', async () => {
@@ -184,6 +186,7 @@ describe('assignStudentToStop', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
     localStorageMock.setItem('token', 'fake-token');
   });
 
@@ -273,6 +276,7 @@ describe('createStudent', () => {
   beforeEach(() => {
     localStorageMock.clear();
     vi.mocked(global.fetch).mockReset();
+    clearSchoolIdCache();
   });
 
   it('should create a student successfully when schoolId is present', async () => {
