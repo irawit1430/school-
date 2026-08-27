@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, updateRoute, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -325,5 +325,53 @@ describe('createStudent', () => {
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+  });
+});
+
+describe('updateRoute', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should update a route successfully', async () => {
+    // Setup
+    localStorageMock.setItem('token', 'fake-token');
+    const routeId = 'route-123';
+    const updateData = { name: 'New Route Name', estimatedDuration: 45 };
+    const mockResponse = { id: routeId, ...updateData };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    // Execute
+    const result = await updateRoute(routeId, updateData);
+
+    // Assert
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/routes/${routeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(updateData),
+    });
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('token', 'fake-token');
+    const routeId = 'route-123';
+    const updateData = { name: 'Failed Route' };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(updateRoute(routeId, updateData)).rejects.toThrow('Failed to update route');
   });
 });
