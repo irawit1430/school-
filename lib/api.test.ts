@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, fetchStudents, assignStudentToStop, createStudent, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -325,5 +325,84 @@ describe('createStudent', () => {
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+  });
+});
+
+describe('fetchStudents', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should fetch students successfully when schoolId is present in user localStorage', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockStudents = [{ id: 'student-1', name: 'John Doe' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockStudents,
+    } as Response);
+
+    // Execute
+    const result = await fetchStudents();
+
+    // Assert
+    expect(result).toEqual(mockStudents);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/students`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+
+    // Execute & Assert
+    await expect(fetchStudents()).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(fetchStudents()).rejects.toThrow('Failed to fetch students');
+  });
+
+  it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'SUPER_ADMIN' }));
+
+    // First fetch for school ID
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'super-school-1' }],
+    } as Response);
+
+    // Second fetch for students
+    const mockStudents = [{ id: 'student-2', name: 'Jane Doe' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockStudents,
+    } as Response);
+
+    // Execute
+    const result = await fetchStudents();
+
+    // Assert
+    expect(result).toEqual(mockStudents);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
+    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/students`, expect.any(Object));
   });
 });
