@@ -19,10 +19,6 @@ export function EmergencyAlertBanner() {
 
     const socket = io("https://gps-backend-jzd7.onrender.com");
     
-    socket.on('connect', () => {
-      console.log('Emergency Alert Banner connected to socket');
-    });
-
     socket.on('emergency_alert', (alert) => {
       console.warn("CRITICAL: Emergency Alert Received!", alert);
       // Check if it belongs to admin's school or if user is SUPER_ADMIN
