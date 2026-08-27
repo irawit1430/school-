@@ -290,7 +290,17 @@ export function Overview() {
 }
 
 // Subcomponent for Metric Cards
-function MetricCard({ title, value, trend, icon: Icon, color, isWarning = false, subtitle }: any) {
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  trend?: string;
+  icon: React.ElementType;
+  color: "blue" | "amber" | "emerald" | "slate";
+  isWarning?: boolean;
+  subtitle?: string;
+}
+
+function MetricCard({ title, value, trend, icon: Icon, color, isWarning = false, subtitle }: MetricCardProps) {
   const colorStyles: Record<string, string> = {
     blue: "text-orange-600",
     amber: "text-amber-500",
