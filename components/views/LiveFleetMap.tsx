@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Settings, Filter, Layers, Bus, MoreVertical, PhoneCall, Focus, MessageSquare, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
-import { fetchBuses, fetchDrivers } from '@/lib/api';
+import { fetchBuses, fetchDrivers, API_URL } from '@/lib/api';
 import { io } from 'socket.io-client';
 
 export function LiveFleetMap() {
@@ -23,7 +23,7 @@ export function LiveFleetMap() {
       });
 
     // Socket.io connection
-    const socket = io("https://gps-backend-jzd7.onrender.com");
+    const socket = io(API_URL);
 
 
     // Listen to real-time location updates from hardware telemetry

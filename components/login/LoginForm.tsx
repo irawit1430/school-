@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -15,7 +16,7 @@ export default function LoginForm() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://gps-backend-jzd7.onrender.com/api/auth/login', {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

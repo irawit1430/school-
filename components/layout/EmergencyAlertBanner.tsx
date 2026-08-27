@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
+import { API_URL } from '@/lib/api';
 import { io } from 'socket.io-client';
 
 export function EmergencyAlertBanner() {
@@ -17,7 +18,7 @@ export function EmergencyAlertBanner() {
       return;
     }
 
-    const socket = io("https://gps-backend-jzd7.onrender.com");
+    const socket = io(API_URL);
     
     socket.on('emergency_alert', (alert) => {
       console.warn("CRITICAL: Emergency Alert Received!", alert);

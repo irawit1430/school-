@@ -1,4 +1,5 @@
-export const API_BASE = 'https://gps-backend-jzd7.onrender.com/api';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gps-backend-jzd7.onrender.com';
+export const API_BASE = `${API_URL}/api`;
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');
