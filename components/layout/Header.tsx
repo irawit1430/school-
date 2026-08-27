@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 import { clsx } from 'clsx';
 
 interface HeaderProps {
@@ -77,7 +78,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
   const fetchNotifications = async () => {
     if (!token) return;
     try {
-      const response = await fetch('https://gps-backend-jzd7.onrender.com/api/notifications', {
+      const response = await fetch(`${API_BASE}/notifications`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -121,7 +122,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
       
       setIsSearching(true);
       try {
-        const response = await fetch(`https://gps-backend-jzd7.onrender.com/api/search?q=${encodeURIComponent(searchQuery)}`, {
+        const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(searchQuery)}`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -151,7 +152,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
   const markAllAsRead = async () => {
     if (!token) return;
     try {
-      await fetch('https://gps-backend-jzd7.onrender.com/api/notifications/mark-read', {
+      await fetch(`${API_BASE}/notifications/mark-read`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -167,7 +168,7 @@ export function Header({ title = "Voltava", subtitle }: HeaderProps) {
     e.stopPropagation();
     if (!token) return;
     try {
-      await fetch(`https://gps-backend-jzd7.onrender.com/api/notifications/${id}/read`, {
+      await fetch(`${API_BASE}/notifications/${id}/read`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
