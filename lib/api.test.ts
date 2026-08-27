@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, createDriver, API_BASE } from './api';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -325,5 +325,64 @@ describe('createStudent', () => {
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+  });
+});
+
+describe('createDriver', () => {
+  beforeEach(() => {
+    localStorageMock.clear();
+    vi.mocked(global.fetch).mockReset();
+  });
+
+  it('should create a driver successfully when schoolId is present', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    localStorageMock.setItem('token', 'fake-token');
+
+    const mockDriverData = { name: 'Jane Doe', email: 'jane@example.com' };
+    const mockResponse = { id: 'driver-1', ...mockDriverData };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    // Execute
+    const result = await createDriver(mockDriverData);
+
+    // Assert
+    expect(result).toEqual(mockResponse);
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/drivers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer fake-token',
+      },
+      body: JSON.stringify(mockDriverData),
+    });
+  });
+
+  it('should throw an error when schoolId is missing', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+
+    const mockDriverData = { name: 'Jane Doe', email: 'jane@example.com' };
+
+    // Execute & Assert
+    await expect(createDriver(mockDriverData)).rejects.toThrow('No school ID found');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should throw an error when fetch fails', async () => {
+    // Setup
+    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    const mockDriverData = { name: 'Jane Doe', email: 'jane@example.com' };
+
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: false,
+    } as Response);
+
+    // Execute & Assert
+    await expect(createDriver(mockDriverData)).rejects.toThrow('Failed to create driver');
   });
 });
