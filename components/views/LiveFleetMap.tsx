@@ -54,7 +54,7 @@ export function LiveFleetMap() {
 
 
   const activeDriverByBusId = React.useMemo(() => {
-    const map = new Map();
+    const map = new Map(); // Active driver lookup
     drivers.forEach(d => {
       if (d.driverTrips) {
         d.driverTrips.forEach((t: any) => {
