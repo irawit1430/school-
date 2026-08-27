@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { API_BASE } from '@/lib/api';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
 import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';

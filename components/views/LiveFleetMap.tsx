@@ -42,9 +42,6 @@ export function LiveFleetMap() {
     // Socket.io connection for real-time telemetry
     const socket = connectSocket();
 
-    socket.on('connect', () => {
-      console.log('Connected to fleet socket for Live Map');
-    });
 
     // Listen to real-time location updates with smooth coordinate interpolation
     socket.on('location_update', (data: any) => {
@@ -121,6 +118,7 @@ export function LiveFleetMap() {
       setFilterSingleBus(false);
     }
   };
+
 
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden bg-slate-100">

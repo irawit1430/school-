@@ -213,6 +213,20 @@ export function ManageRoutes() {
     );
   }
 
+  const busesMap = useMemo(() => {
+    return buses.reduce((acc, bus) => {
+      acc[bus.id] = bus;
+      return acc;
+    }, {} as Record<string, { id: string; licensePlate: string | undefined; capacity: number | undefined }>);
+  }, [buses]);
+
+  const driversMap = useMemo(() => {
+    return drivers.reduce((acc, driver) => {
+      acc[driver.id] = driver;
+      return acc;
+    }, {} as Record<string, { id: string; name: string; email: string | undefined }>);
+  }, [drivers]);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-end mb-6">
@@ -320,8 +334,8 @@ export function ManageRoutes() {
                 </tr>
               ) : displayRoutes.map((route: any) => {
                 const latestTrip = route.trips && route.trips.length > 0 ? route.trips[route.trips.length - 1] : null;
-                const assignedBus = latestTrip ? buses.find(b => b.id === latestTrip.busId) : null;
-                const assignedDriver = latestTrip ? drivers.find(d => d.id === latestTrip.driverId) : null;
+                const assignedBus = latestTrip ? busesMap[latestTrip.busId] : null;
+                const assignedDriver = latestTrip ? driversMap[latestTrip.driverId] : null;
 
                 const statusStr = latestTrip?.status || 'INACTIVE';
                 const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
