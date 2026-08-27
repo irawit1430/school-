@@ -99,6 +99,19 @@ export function AddStudentModal({
             />
           </div>
           
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">
+              Guardian Phone
+            </label>
+            <input 
+              type="tel" pattern="[0-9]{10}" title="Must be 10 digits"
+              value={formData.guardianPhone || ''}
+              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
+              placeholder="e.g. +91 9876543210"
+            />
+          </div>
+          
           <div className="pt-4 flex gap-3 justify-end">
             <button 
               type="button"
@@ -114,18 +127,6 @@ export function AddStudentModal({
             >
               {isSubmitting ? 'Registering...' : 'Register Student'}
             </button>
-          </div>
-                  <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Guardian Phone
-            </label>
-            <input 
-              type="tel"
-              value={formData.guardianPhone || ''}
-              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. +91 9876543210"
-            />
           </div>
         </form>
       </div>

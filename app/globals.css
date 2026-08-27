@@ -68,3 +68,43 @@ body {
 }
 @import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800&display=swap');
 h1, h2, h3 { font-family: 'Gabarito', sans-serif; }
+
+/* ─── QR card sheets ───────────────────────────────────────────────────────────
+   Printed on the school's own A4 printer and laminated — no card printer, no
+   vendor. Eight to a sheet, so 600 students is 75 sheets. */
+@media print {
+  @page { size: A4 portrait; margin: 8mm; }
+  body { background: #fff; }
+
+  .qr-sheet {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: 66mm;
+    gap: 4mm;
+  }
+  .qr-card {
+    border: 0.4mm dashed #999;   /* cut guide */
+    border-radius: 2mm;
+    padding: 4mm;
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+    break-inside: avoid;
+  }
+  /* 2 across x 4 down fills a sheet; break after the eighth. */
+  .qr-card:nth-child(8n) { break-after: page; }
+
+  .qr-code { width: 42mm; height: 42mm; flex-shrink: 0; }
+  .qr-code svg { width: 100%; height: 100%; display: block; }
+
+  .qr-meta { min-width: 0; }
+  .qr-name {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12pt; font-weight: 700; margin: 0 0 1mm;
+    color: #000; overflow-wrap: anywhere;
+  }
+  .qr-sub {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 9pt; margin: 0; color: #333;
+  }
+}

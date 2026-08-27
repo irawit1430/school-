@@ -8,7 +8,7 @@ import { Search, Bell, Clock, LogOut, Bus, Map, Users, Route, Menu } from 'lucid
 import { useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
-import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, searchGlobal, getUser, getToken, clearAuth, connectSocket, updateParentPassword } from '@/lib/api';
+import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface HeaderProps {
@@ -152,21 +152,26 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     return () => clearTimeout(debounceTimer);
   }, [searchQuery, token]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => { try { await logoutUser(); } catch (e) {}
     clearAuth();
     router.push('/login');
   };
 
   const markAllAsRead = async () => {
     if (!token) return;
+    const unreadAlerts = notifications.filter(n => !n.isRead && ['DRIVER_SOS', 'HARDWARE_SOS', 'DELAY'].includes(n.type || ''));
     // Optimistic update + cooldown to prevent poll from reverting
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     skipPollUntil.current = Date.now() + 15000;
     try {
       await markAllNotificationsRead();
+      // EmergencyAlerts are in a separate table and aren't caught by the mark-read endpoint
+      if (unreadAlerts.length > 0) {
+        await Promise.allSettled(unreadAlerts.map(a => resolveAlert(a.id)));
+      }
     } catch (error) {
       console.error('Failed to mark all as read:', error);
-      toast.error('Failed to mark notifications as read');
+      toast.error(apiErrorMessage(error, 'Failed to mark notifications as read.'));
       // Revert by re-fetching
       skipPollUntil.current = 0;
       fetchNotifications();
@@ -176,11 +181,16 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   const markAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!token) return;
+    const notif = notifications.find(n => n.id === id);
     // Optimistic update + cooldown
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     skipPollUntil.current = Date.now() + 15000;
     try {
-      await markNotificationRead(id);
+      if (notif && ['DRIVER_SOS', 'HARDWARE_SOS', 'DELAY'].includes(notif.type || '')) {
+        await resolveAlert(id);
+      } else {
+        await markNotificationRead(id);
+      }
     } catch (error) {
       console.error('Failed to mark as read:', error);
       toast.error('Failed to mark notification as read');
@@ -202,12 +212,39 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
       await markNotificationRead(notif.id);
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
     } catch (error) {
-      toast.error('Failed to reset password');
+      toast.error(apiErrorMessage(error, 'Failed to reset password.'));
       console.error('Failed to reset password:', error);
     }
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  // Search results looked clickable — pointer cursor, hover state — and weren't. An
+  // admin found the child they were phoned about and then had to navigate by hand.
+  // Routes and the map already understand ?route=; students takes ?q= the same way.
+  const searchResultHref = (result: SearchResult): string => {
+    const q = encodeURIComponent(result.name || '');
+    switch ((result.type || '').toLowerCase()) {
+      case 'student': return `/students?q=${q}`;
+      case 'route':   return `/map?route=${q}`;
+      // Drivers and buses have no search box and no need of one at a school's scale —
+      // a dozen rows is a glance. Land on the page rather than pass a filter nothing reads.
+      case 'driver':  return '/drivers';
+      case 'bus':     return '/buses';
+      default:        return '';
+    }
+  };
+
+  const openSearchResult = (result: SearchResult) => {
+    const href = searchResultHref(result);
+    if (!href) {
+      toast.error(`Nothing to open for "${result.name}".`);
+      return;
+    }
+    setSearchQuery('');
+    setSearchResults([]);
+    router.push(href);
+  };
 
   const getSearchIcon = (type: string) => {
     if (!type) return <Search size={14} className="text-slate-500" />;
@@ -264,14 +301,20 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
               ) : searchResults.length > 0 ? (
                 <ul>
                   {searchResults.map((result) => (
-                    <li key={result.id} className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-start gap-3 border-b border-slate-50 last:border-0 transition-colors">
-                      <div className="mt-0.5 p-1.5 bg-slate-100 rounded-md">
-                        {getSearchIcon(result.type)}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-slate-900">{result.name}</div>
-                        <div className="text-xs text-slate-500">{result.detail}</div>
-                      </div>
+                    <li key={result.id} className="border-b border-slate-50 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => openSearchResult(result)}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-start gap-3 transition-colors focus:outline-none focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-orange-500"
+                      >
+                        <div className="mt-0.5 p-1.5 bg-slate-100 rounded-md">
+                          {getSearchIcon(result.type)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">{result.name}</div>
+                          <div className="text-xs text-slate-500">{result.detail}</div>
+                        </div>
+                      </button>
                     </li>
                   ))}
                 </ul>

@@ -26,6 +26,8 @@ export const getUser = (): any => {
 export const setUser = (u: any) =>
   localStorage.setItem(CONFIG.USER_STORAGE_KEY, JSON.stringify(u));
 
+export const logoutUser = () => api('/auth/logout', { method: 'POST' });
+
 export const clearAuth = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');
@@ -45,6 +47,23 @@ export class ApiError extends Error {
     this.issues = issues;
   }
 }
+
+/**
+ * The reason an action failed, in words an admin can act on.
+ *
+ * ApiError carries the server's message and its field-level validation issues; call
+ * sites used to discard both for a fixed string. That turned a conflict — which names
+ * the stop a child already occupies — into "please try again", advice guaranteed not
+ * to work, and turned unrelated failures into confidently wrong diagnoses.
+ */
+export const apiErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof ApiError) {
+    if (err.issues?.length) return err.issues.map(i => i.message).join('; ');
+    if (err.message) return err.message;
+  }
+  const message = (err as { message?: unknown })?.message;
+  return typeof message === 'string' && message ? message : fallback;
+};
 
 // ─── Core HTTP wrapper with global error handling ──────────
 const getHeaders = (): Record<string, string> => {
@@ -178,7 +197,7 @@ export async function login(email: string, password: string) {
 export async function updatePassword(password: string) {
   const user = getUser();
   if (!user) throw new ApiError('Not authenticated', 401);
-  return api(`/users/${user.id}/password`, { method: 'PUT', body: { password } });
+  return api(`/users/me`, { method: 'PUT', body: { password } });
 }
 
 // ─── Authenticated Socket.IO ───────────────────────────────
@@ -203,7 +222,9 @@ export function connectSocket(): Socket {
 // ─── Stats ─────────────────────────────────────────────────
 export const fetchStats = async () => {
   try {
-    return await api('/stats');
+    const schoolId = await getSchoolId();
+    if (!schoolId) return {};
+    return await api(`/schools/${schoolId}/stats`);
   } catch (err) {
     console.error('Failed to fetch stats:', err);
     return {};
@@ -283,16 +304,14 @@ export const createTrip = async (data: { routeId: string; busId: string; driverI
 };
 
 export const updateTripStatus = async (tripId: string, status: string) =>
-  api(`/trips/${tripId}`, { method: 'PUT', body: { status } });
+  api(`/trips/${tripId}/status`, { method: 'PATCH', body: { status } });
 
 export const updateTrip = async (tripId: string, data: {
-  routeId?: string;
-  busId?: string;
-  driverId?: string;
+  routeId?: string | null;
+  busId?: string | null;
+  driverId?: string | null;
   scheduledStart?: string;
-}) => {
-  return api(`/trips/${tripId}`, { method: 'PUT', body: data });
-};
+}) => api(`/trips/${tripId}`, { method: 'PUT', body: data });
 
 // ─── Attendance ────────────────────────────────────────────
 export const fetchTodayAttendance = async () => {
@@ -308,10 +327,18 @@ export const fetchDrivers = async () => {
   return api(`/schools/${schoolId}/drivers`);
 };
 
-export const createDriver = async (data: { name: string; email: string }) => {
+export const createDriver = async (data: { name: string; email: string; phone?: string }) => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
   return api(`/schools/${schoolId}/drivers`, { method: 'POST', body: data });
+};
+
+export const updateDriver = async (id: string, data: any) => {
+  return api(`/drivers/${id}`, { method: 'PUT', body: data });
+};
+
+export const deleteDriver = async (id: string) => {
+  return api(`/drivers/${id}`, { method: 'DELETE' });
 };
 
 // ─── Notifications ─────────────────────────────────────────
@@ -341,8 +368,32 @@ export const markNotificationRead = async (id: string) => {
   return api(`/notifications/${id}/read`, { method: 'POST', body: {} });
 };
 
+export const resolveAlert = async (id: string) => {
+  return api(`/notifications/${id}/resolve`, { method: 'POST', body: {} });
+};
+
 export const updateParentPassword = async (parentId: string, password: string) => {
   return api(`/parents/${parentId}`, { method: 'PUT', body: { password } });
+};
+
+export const sendMessageToParent = async (parentId: string, subject: string, message: string) => {
+  return api(`/parents/${parentId}/messages`, { method: 'POST', body: { subject, message } });
+};
+
+// ─── QR cards ──────────────────────────────────────────────
+// The only response in the system that emits qrToken. POST with explicit ids rather
+// than a GET over the whole school: a GET would sit in browser history and any proxy
+// log — and school networks are filtered and logged as a matter of course.
+export const fetchQrCards = async (studentIds: string[]) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<Array<{
+    studentId: string;
+    name: string;
+    grade?: string;
+    routeStopName?: string;
+    qrToken: string;
+  }>>(`/schools/${schoolId}/qr-cards`, { method: 'POST', body: { studentIds } });
 };
 
 // ─── Search ────────────────────────────────────────────────
@@ -350,8 +401,11 @@ export const searchGlobal = (query: string) =>
   api(`/search?q=${encodeURIComponent(query)}`);
 
 // ─── Broadcast ─────────────────────────────────────────────
-export const sendBroadcast = async (data: any) => 
-  api('/broadcast', { method: 'POST', body: data });
+export const sendBroadcast = async (data: any) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}/broadcast`, { method: 'POST', body: data });
+};
 
 // ─── Device Locations (for Live Map initial load) ──────────
 export const fetchDeviceLocations = () =>
@@ -360,25 +414,43 @@ export const importStudentsCSV = async (file: File) => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
   
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  const token = getToken();
-  const res = await fetch(`${API_BASE}/schools/${schoolId}/students/import`, {
-    method: 'POST',
-    headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-    body: formData
+  return new Promise<any>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) throw new Error("Empty file");
+        
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length < 2) throw new Error("No data rows found");
+        
+        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+        const nameIdx = headers.findIndex(h => h.includes('name') && !h.includes('guardian'));
+        const rollIdx = headers.findIndex(h => h.includes('roll') || h.includes('id'));
+        const gNameIdx = headers.findIndex(h => h.includes('guardian name') || h.includes('parent name'));
+        const gPhoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('contact'));
+        
+        if (nameIdx === -1 || rollIdx === -1 || gNameIdx === -1 || gPhoneIdx === -1) {
+          throw new Error("Missing required columns. Please check the template.");
+        }
+        
+        const students = lines.slice(1).map(line => {
+          const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ''));
+          return {
+            name: cols[nameIdx] || '',
+            rollNumber: cols[rollIdx] || '',
+            guardianName: cols[gNameIdx] || '',
+            guardianPhone: cols[gPhoneIdx] || ''
+          };
+        }).filter(s => s.name && s.rollNumber);
+        
+        const res = await api(`/schools/${schoolId}/students/bulk`, { method: 'POST', body: students });
+        resolve(res);
+      } catch (err: any) {
+        reject(new ApiError(err.message, 400));
+      }
+    };
+    reader.onerror = () => reject(new ApiError("File read error", 400));
+    reader.readAsText(file);
   });
-
-  if (res.status === 401) {
-    clearAuth();
-    if (typeof window !== 'undefined') window.location.href = '/login';
-    throw new ApiError('Session expired', 401);
-  }
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new ApiError(data.error || 'Failed to import students', res.status, data.issues);
-  }
-  return data;
 };

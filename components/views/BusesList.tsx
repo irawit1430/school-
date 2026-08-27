@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchBuses, createBus, deleteBus, fetchRoutes, fetchDrivers, createTrip } from '@/lib/api';
+import { fetchBuses, createBus, deleteBus, fetchRoutes, fetchDrivers, createTrip, apiErrorMessage } from '@/lib/api';
 import { Bus, Plus, Trash2, X, Route as RouteIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -32,7 +32,7 @@ export function BusesList() {
       setDrivers(dData);
     } catch (err) {
       console.error('Failed to fetch data:', err);
-      toast.error('Failed to load buses data');
+      toast.error(apiErrorMessage(err, 'Failed to load buses data.'));
     } finally {
       setLoading(false);
     }

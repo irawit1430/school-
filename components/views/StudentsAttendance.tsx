@@ -3,10 +3,9 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchStudents, fetchTodayAttendance, createStudent, importStudentsCSV, fetchStats, fetchRoutes, assignStudentToStop, fetchNotifications } from '@/lib/api';
+import { fetchStudents, fetchTodayAttendance, createStudent, importStudentsCSV, fetchStats, fetchRoutes, assignStudentToStop, fetchNotifications, sendMessageToParent, apiErrorMessage } from '@/lib/api';
 import { Download, Plus, Upload, Eye, Mail, AlertTriangle, Clock, Info, Search } from 'lucide-react';
 import { clsx } from 'clsx';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { toast } from 'react-hot-toast';
 import { SummaryCards } from './students/SummaryCards';
 import { AddStudentModal } from './students/AddStudentModal';
@@ -45,7 +44,11 @@ export function StudentsAttendance() {
   const [isMessageSubmitting, setIsMessageSubmitting] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState('');
+  // Global search deep-links here as /students?q=<name>; same pattern the map uses.
+  const [searchQuery, setSearchQuery] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('q') || '';
+  });
   const [activeTab, setActiveTab] = useState('All Students');
   const itemsPerPage = 8;
 
@@ -64,7 +67,7 @@ export function StudentsAttendance() {
       .catch(err => {
         console.error('Failed to load students/attendance:', err);
         setError('Failed to load data. Please refresh the page.');
-        toast.error('Failed to load students data');
+        toast.error(apiErrorMessage(err, 'Failed to load students data.'));
         setLoading(false);
       });
   };
@@ -94,7 +97,7 @@ export function StudentsAttendance() {
       loadData();
     } catch (err) {
       console.error('Failed to assign student', err);
-      toast.error('Failed to assign student. Please try again.');
+      toast.error(apiErrorMessage(err, 'Failed to assign student.'));
     } finally {
       setIsAssignSubmitting(false);
     }
@@ -105,13 +108,18 @@ export function StudentsAttendance() {
     if (!messageStudent) return;
     setIsMessageSubmitting(true);
     
-    // Simulate API call for sending message
-    setTimeout(() => {
-      setIsMessageSubmitting(false);
+    try {
+      // Call actual backend API
+      await sendMessageToParent(messageStudent.parentId, messageForm.subject, messageForm.body);
+      
       setMessageStudent(null);
       setMessageForm({ subject: '', body: '' });
       toast.success('Message sent to parent successfully!');
-    }, 1000);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to send message');
+    } finally {
+      setIsMessageSubmitting(false);
+    }
   };
 
   const handleOpenCreate = () => {
@@ -142,7 +150,7 @@ export function StudentsAttendance() {
       }
     } catch (err) {
       console.error('Failed to save student', err);
-      toast.error('Failed to register student. Please check if RFID tag is unique and try again.');
+      toast.error(apiErrorMessage(err, 'Failed to register student.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -169,13 +177,17 @@ export function StudentsAttendance() {
     if (studentsData.length === 0) return toast.error('No data to export');
     
     const headers = ['Name', 'Grade', 'RFID Tag', 'Assigned Route', 'Status', 'Last Check-In'];
-    const rows = filteredStudents.map(s => [
-      `"${s.name}"`, 
-      `"${s.grade || ''}"`, 
-      `"${s.tag}"`, 
-      `"${s.route}"`, 
-      `"${s.status}"`, 
-      `"${s.time}"`
+    const escape = (v: any) => {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
+    };
+    const rows = allProcessedStudents.map(s => [
+      escape(s.name), 
+      escape(s.grade || ''), 
+      escape(s.tag), 
+      escape(s.route), 
+      escape(s.status), 
+      escape(s.time)
     ]);
     const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
     
@@ -191,26 +203,58 @@ export function StudentsAttendance() {
   };
 
   // ─── DATA PROCESSING (Memoized) ─────────────────────────
-  const { allProcessedStudents, totalStudents, boardedCount, atSchoolCount, absentCount } = useMemo(() => {
+  //
+  // boardingStatus is 'BOARDED' | 'ALIGHTED' | null. Null means no scan yet today —
+  // genuinely unknown, NOT absent. A child who has not boarded at 06:40 and a child who
+  // failed to board at 08:20 are the same null, and calling either one "Absent" is a
+  // claim the data does not support. (This column used to be the hardcoded string
+  // 'Absent' for every student in every school, so it was never true at all.)
+  const { allProcessedStudents, totalStudents, boardedCount, alightedCount, notScannedCount, noShowCount, onLeaveCount } = useMemo(() => {
     let bCount = 0;
-    let sCount = 0;
     let aCount = 0;
+    let unknownCount = 0;
+    let noShow = 0;
+    let leave = 0;
+
+    const byStudent = new Map<string, any>();
+    for (const log of attendanceLogs) {
+      const key = log.studentId || log.student?.id;
+      if (key) byStudent.set(key, log);
+    }
 
     const processed = studentsData.map(s => {
-      const todayLog = attendanceLogs.find(log => log.studentId === s.id || log.student?.id === s.id);
-      let status = 'Absent';
-      let time = '--:--';
-      if (todayLog) {
-        status = todayLog.type === 'BOARDED' ? 'Boarded' : 'At School';
-        time = new Date(todayLog.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
+      const todayLog = byStudent.get(s.id);
+
+      // Prefer the row's own summary; fall back to today's log for older payloads.
+      const raw = s.boardingStatus ?? todayLog?.type ?? null;
+      // Approved leave is its own fact, not a kind of absence. A child the school
+      // already excused must never read the same as one who failed to board — that
+      // conflation is what the "Leave & Absences" tab used to do while never once
+      // loading a leave.
+      const status = raw === 'BOARDED' ? 'Boarded'
+                   : raw === 'ALIGHTED' ? 'Dropped off'
+                   : raw === 'NO_SHOW' ? 'Did not board'
+                   : s.onLeave ? 'On leave'
+                   : 'Not scanned';
+
+      // Rendered in the viewer's timezone, while the server scopes "today" to its own
+      // (TZ=Asia/Kolkata). Those agree for an admin sitting in the school, which is
+      // every real user — but they are two assumptions, not one. If the platform ever
+      // takes a school outside IST, this formatting moves with the server's day
+      // boundary and the Run scheduler's weekday patterns, as one change.
+      const stamp = s.lastCheckIn || todayLog?.timestamp || null;
+      const parsed = stamp ? new Date(stamp) : null;
+      const time = parsed && !isNaN(parsed.getTime())
+        ? parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '—';
 
       const routeName = s.assignedRoute || s.routeMappings?.[0]?.routeStop?.route?.name || 'Unassigned';
-      const finalStatus = s.boardingStatus || status;
 
-      if (finalStatus === 'Boarded') bCount++;
-      else if (finalStatus === 'At School') sCount++;
-      else aCount++;
+      if (status === 'Boarded') bCount++;
+      else if (status === 'Dropped off') aCount++;
+      else if (status === 'Did not board') noShow++;
+      else if (status === 'On leave') leave++;
+      else unknownCount++;
 
       return {
         id: s.id,
@@ -218,8 +262,14 @@ export function StudentsAttendance() {
         tag: s.rfidTag || 'N/A',
         grade: s.grade,
         route: routeName,
-        status: finalStatus,
-        time: s.lastCheckIn !== '--:--' && s.lastCheckIn ? s.lastCheckIn : time,
+        status,
+        onLeave: !!s.onLeave,
+        parentId: s.parentId || s.parent?.id,
+        // parentPhone is the primary number; guardianPhone is the schema's own fallback
+        // for families with no parent account.
+        guardianPhone: s.parentPhone || s.guardianPhone || '',
+        parentName: s.parentName || '',
+        time,
         avatar: s.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name)}&background=random`
       };
     });
@@ -228,8 +278,10 @@ export function StudentsAttendance() {
       allProcessedStudents: processed,
       totalStudents: stats?.totalStudents ?? studentsData.length ?? 0,
       boardedCount: bCount,
-      atSchoolCount: sCount,
-      absentCount: aCount
+      alightedCount: aCount,
+      notScannedCount: unknownCount,
+      noShowCount: noShow,
+      onLeaveCount: leave
     };
   }, [studentsData, attendanceLogs, stats]);
 
@@ -237,7 +289,8 @@ export function StudentsAttendance() {
     return allProcessedStudents.filter(student => {
       // 1. Tab Filtering
       if (activeTab === 'Currently Boarded' && student.status !== 'Boarded') return false;
-      if (activeTab === 'Leave & Absences' && student.status !== 'Absent') return false;
+      if (activeTab === 'Not Scanned' && student.status !== 'Not scanned') return false;
+      if (activeTab === 'Did Not Board' && student.status !== 'Did not board') return false;
 
       // 2. Search Filtering
       if (searchQuery) {
@@ -257,11 +310,15 @@ export function StudentsAttendance() {
     setCurrentPage(1);
   }, [activeTab, searchQuery]);
 
-  const presentCount = boardedCount + atSchoolCount;
+  // "Currently boarded" means on a bus right now — a child who has been dropped off is
+  // not on one, so they are counted separately rather than folded in.
+  const presentCount = boardedCount;
   const dynamicAttendanceData = [
     { name: 'Boarded', value: boardedCount, color: '#3b82f6' },
-    { name: 'At School', value: atSchoolCount, color: '#10b981' },
-    { name: 'Absent', value: absentCount, color: '#94a3b8' }
+    { name: 'Dropped off', value: alightedCount, color: '#10b981' },
+    { name: 'Did not board', value: noShowCount, color: '#ef4444' },
+    { name: 'On leave', value: onLeaveCount, color: '#a855f7' },
+    { name: 'Not scanned', value: notScannedCount, color: '#94a3b8' }
   ].filter(d => d.value > 0);
   const boardedPercentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
 
@@ -329,7 +386,7 @@ export function StudentsAttendance() {
         stats={stats}
         presentCount={presentCount}
         boardedPercentage={boardedPercentage}
-        absentCount={absentCount}
+        notScannedCount={notScannedCount}
         dynamicAttendanceData={dynamicAttendanceData}
       />
 
@@ -338,7 +395,7 @@ export function StudentsAttendance() {
           {/* Tabs & Search */}
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
              <div className="flex items-center gap-6 overflow-x-auto">
-               {['All Students', 'Currently Boarded', 'Leave & Absences'].map((tab) => (
+               {['All Students', 'Currently Boarded', 'Did Not Board', 'Not Scanned'].map((tab) => (
                   <button 
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -393,9 +450,10 @@ export function StudentsAttendance() {
                         <span className={clsx(
                           "px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider inline-flex items-center border",
                           student.status === 'Boarded' && "bg-emerald-50 text-emerald-700 border-emerald-100",
-                          student.status === 'Absent' && "bg-slate-100 text-slate-600 border-slate-200",
-                          student.status === 'Delayed' && "bg-amber-50 text-amber-700 border-amber-100",
-                          student.status === 'At School' && "bg-orange-50 text-orange-700 border-orange-100"
+                          student.status === 'Not scanned' && "bg-slate-100 text-slate-600 border-slate-200",
+                          student.status === 'Did not board' && "bg-red-50 text-red-700 border-red-100",
+                          student.status === 'On leave' && "bg-purple-50 text-purple-700 border-purple-100",
+                          student.status === 'Dropped off' && "bg-orange-50 text-orange-700 border-orange-100"
                         )}>
                           {student.status}
                         </span>
@@ -449,28 +507,24 @@ export function StudentsAttendance() {
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-900 mb-6">Attendance Summary</h3>
-            <div className="h-48 relative flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dynamicAttendanceData}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={2}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {dynamicAttendanceData.map((entry: any, index: number) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-bold text-slate-900">{boardedPercentage}%</span>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Boarded</span>
-              </div>
-            </div>
+            
+            {/* CSS Donut Chart */}
+            {(() => {
+              const bPct = Math.round((boardedCount / totalStudents) * 100) || 0;
+              const sPct = Math.round((alightedCount / totalStudents) * 100) || 0;
+              const donutStyle = { background: `conic-gradient(#3b82f6 ${bPct}%, #10b981 0 ${bPct + sPct}%, #94a3b8 0)` };
+              return (
+                <div className="flex justify-center mb-6">
+                  <div className="w-40 h-40 rounded-full flex items-center justify-center" style={donutStyle}>
+                    <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center">
+                      <span className="text-3xl font-bold text-slate-900">{boardedPercentage}%</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Boarded</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="mt-6 space-y-2">
                {dynamicAttendanceData.map((item: any, i: number) => (
                  <div key={i} className="flex items-center justify-between text-sm">
@@ -523,9 +577,6 @@ export function StudentsAttendance() {
                 <p className="text-sm text-slate-500 py-4 text-center">No recent alerts</p>
               )}
             </div>
-            <button className="w-full mt-4 text-sm font-semibold text-orange-600 hover:text-orange-700 py-1 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 rounded">
-              View All Alerts
-            </button>
           </div>
         </div>
       </div>
@@ -548,6 +599,14 @@ export function StudentsAttendance() {
           onSubmit={handleSubmit}
           formData={formData}
           setFormData={setFormData}
+          isSubmitting={isSubmitting}
+        />
+      )}
+
+      {isImportModalOpen && (
+        <ImportStudentsModal
+          onClose={() => setIsImportModalOpen(false)}
+          onImport={handleImportCSV}
           isSubmitting={isSubmitting}
         />
       )}

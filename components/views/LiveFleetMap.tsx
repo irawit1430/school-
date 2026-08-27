@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Bell, Settings, Filter, Layers, Bus, X, PhoneCall, Focus, MessageSquare, AlertTriangle, Eye, EyeOff, Navigation, CheckCircle2, ChevronRight } from 'lucide-react';
 import { clsx } from 'clsx';
-import { fetchBuses, fetchDrivers, connectSocket } from '@/lib/api';
+import { fetchBuses, fetchDrivers, fetchDeviceLocations, connectSocket } from '@/lib/api';
+import { isActiveTrip } from '@/lib/trips';
 import DynamicMap from '@/components/map/DynamicMap';
+import toast from 'react-hot-toast';
 
 export function LiveFleetMap() {
   const [buses, setBuses] = useState<any[]>([]);
@@ -17,6 +19,13 @@ export function LiveFleetMap() {
     return new URLSearchParams(window.location.search).get('route') || '';
   });
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'OFFLINE'>('ALL');
+  // Who is driving each bus, keyed by busId. Comes from REST, not the socket: the
+  // location_update event is position-only and its two emitters disagree — the TCP
+  // path the real hardware trackers use has never carried driver identity at all, so
+  // reading a name off the socket works with a phone in testing and says "Unassigned"
+  // for every actual bus in production. REST also resolves the running trip in a
+  // defined order, which matters once a bus has two legs in a day.
+  const [driverByBus, setDriverByBus] = useState<Record<string, any>>({});
 
   useEffect(() => {
     // Initial fetch
@@ -59,7 +68,21 @@ export function LiveFleetMap() {
       }));
     });
 
+    // Identity changes only when a trip starts or ends — a few times a day — so a slow
+    // poll is enough. Position comes from the socket above.
+    const loadDriverIdentity = () => {
+      fetchDeviceLocations()
+        .then((locations: any) => {
+          const rows = Array.isArray(locations) ? locations : (locations?.data ?? []);
+          setDriverByBus(Object.fromEntries(rows.map((r: any) => [r.busId, r])));
+        })
+        .catch(err => console.warn('Failed to refresh driver identity', err));
+    };
+    loadDriverIdentity();
+    const identityPoll = setInterval(loadDriverIdentity, 60000);
+
     return () => {
+      clearInterval(identityPoll);
       socket.disconnect();
     };
   }, []);
@@ -79,7 +102,10 @@ export function LiveFleetMap() {
       const q = searchQuery.toLowerCase().trim();
       const nameMatch = (bus.name || bus.licensePlate || bus.registrationNumber || '').toLowerCase().includes(q);
       const routeMatch = (bus.routeName || '').toLowerCase().includes(q);
-      const driverMatch = (bus.driverName || bus.driver?.name || '').toLowerCase().includes(q);
+      // Same resolution as the card renders, or searching a driver's name misses the
+      // bus they are actually on.
+      const driverMatch = (driverByBus[bus.id]?.driverName || bus.driverName || bus.driver?.name || '')
+        .toLowerCase().includes(q);
       const matchesSearch = !q || nameMatch || routeMatch || driverMatch;
 
       const isActive = bus.status === 'active' || (bus.gpsLogs?.[0]?.speed && bus.gpsLogs[0].speed > 0);
@@ -87,7 +113,7 @@ export function LiveFleetMap() {
       if (statusFilter === 'OFFLINE') return matchesSearch && !isActive;
       return matchesSearch;
     });
-  }, [buses, searchQuery, statusFilter]);
+  }, [buses, searchQuery, statusFilter, driverByBus]);
 
   const handleSelectBus = (busId: string | null) => {
     setSelectedBusId(busId);
@@ -227,8 +253,8 @@ export function LiveFleetMap() {
               onClick={() => {
                 if (navigator.geolocation) {
                   navigator.geolocation.getCurrentPosition(
-                    () => alert('Location centered.'),
-                    () => alert('Location permission denied.')
+                    () => toast.success('Location centered.'),
+                    () => toast.error('Location permission denied.')
                   );
                 }
               }} 
@@ -237,10 +263,10 @@ export function LiveFleetMap() {
             >
               <Navigation size={18} />
             </button>
-            <button onClick={() => alert('Map layers: OpenStreetMap Live (Default)')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-700" title="Map Layers">
+            <button onClick={() => toast.success('Map layers: OpenStreetMap Live (Default)')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-700" title="Map Layers">
               <Layers size={18} />
             </button>
-            <button onClick={() => alert('Map settings: Telemetry refresh interval is 5 seconds.')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-700" title="Settings">
+            <button onClick={() => toast.success('Map settings: Telemetry refresh interval is 5 seconds.')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-700" title="Settings">
               <Settings size={18} />
             </button>
           </div>
@@ -326,10 +352,18 @@ export function LiveFleetMap() {
               const isActive = bus.status === 'active' || speed > 0;
               const isSelected = selectedBusId === bus.id;
               
-              const activeDriver = drivers.find(d => 
-                d.driverTrips?.some((t: any) => t.busId === bus.id && (t.status === 'ON_SCHEDULE' || t.status === 'PLANNED'))
+              // The API resolves this from the bus's running trip in a defined order.
+              // The local find() below is only a fallback: it returns an arbitrary
+              // driver when two share a bus across a two-leg day, which on a school run
+              // means offering to phone the morning driver about an afternoon bus.
+              const identity = driverByBus[bus.id];
+              // DELAYED counts as live here too — without it a late bus loses its driver
+              // match, which is exactly when someone needs to phone them.
+              const activeDriver = drivers.find(d =>
+                d.driverTrips?.some((t: any) => t.busId === bus.id && isActiveTrip(t))
               );
-              const resolvedDriverName = activeDriver?.name || (bus.driverName !== 'Unassigned' ? bus.driverName : null) || bus.driver?.user?.name || 'Unassigned';
+              const resolvedDriverName = identity?.driverName || activeDriver?.name || (bus.driverName !== 'Unassigned' ? bus.driverName : null) || bus.driver?.user?.name || 'Unassigned';
+              const driverPhone = identity?.driverPhone || activeDriver?.phone || bus.driver?.phone || null;
               
               return (
                 <div 
@@ -417,17 +451,33 @@ export function LiveFleetMap() {
                       {isSelected ? 'Focused (Click to unselect)' : 'Track / Focus on Map'}
                     </button>
 
+                    {/* Was a toast that said "Contacting driver…" and placed no call. During a
+                        breakdown that reads as success and nobody has been reached. Now it dials,
+                        or says plainly that it can't. */}
                     {resolvedDriverName !== 'Unassigned' && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          alert(`Contacting driver ${resolvedDriverName}...`);
-                        }}
-                        className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-orange-600 hover:bg-orange-50 transition-colors"
-                        title="Contact Driver"
-                      >
-                        <PhoneCall size={14} />
-                      </button>
+                      driverPhone ? (
+                        <a
+                          href={`tel:${driverPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:text-orange-600 hover:bg-orange-50 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          title={`Call ${resolvedDriverName} on ${driverPhone}`}
+                          aria-label={`Call ${resolvedDriverName}`}
+                        >
+                          <PhoneCall size={14} />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toast.error(`No phone number on file for ${resolvedDriverName}. Add one on the Drivers page.`);
+                          }}
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-300 cursor-not-allowed"
+                          title={`No phone number for ${resolvedDriverName}`}
+                          aria-label={`No phone number for ${resolvedDriverName}`}
+                        >
+                          <PhoneCall size={14} />
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
@@ -441,7 +491,7 @@ export function LiveFleetMap() {
           <button 
             onClick={() => {
               const msg = prompt('Enter emergency / general broadcast message to all drivers:');
-              if (msg) alert('Message broadcasted to all drivers!');
+              if (msg) toast.success('Message broadcasted to all drivers!');
             }}
             className="w-full bg-slate-900 hover:bg-black text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all text-xs shadow-md active:scale-98"
           >

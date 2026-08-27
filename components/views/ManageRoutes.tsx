@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchRoutes, deleteRoute, createTrip, updateTripStatus, fetchBuses, fetchDrivers, fetchStats, getUser } from '@/lib/api';
+import { fetchRoutes, deleteRoute, createTrip, updateTripStatus, fetchBuses, fetchDrivers, fetchStats, getUser, apiErrorMessage } from '@/lib/api';
 import { Clock, CheckCircle, Zap, SlidersHorizontal, Download, Edit3, MoreVertical, Map, Trash2, X, Users, Route as RouteIcon, Plus, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 import Link from 'next/link';
@@ -69,7 +69,7 @@ export function ManageRoutes() {
       .catch(err => {
         console.error('Failed to load data:', err);
         setLoadError(err?.message || 'Failed to load routes');
-        toast.error('Failed to load routes');
+        toast.error(apiErrorMessage(err, 'Failed to load routes.'));
         setLoading(false);
       });
   };
@@ -182,16 +182,17 @@ export function ManageRoutes() {
       const statusStr = latestTrip?.status || 'INACTIVE';
       const stopsCount = Array.isArray(route.stops) ? route.stops.length : route.stops || 0;
 
-      const busName = assignedBus?.licensePlate || route.bus?.name || 'Unassigned';
+      const busName = assignedBus?.registrationNumber || route.bus?.name || 'Unassigned';
       const driverName = assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver';
 
       return [route.name, busName, driverName, stopsCount, route.estimatedDuration || route.time || '', statusStr].map(csvCell).join(',');
     });
 
-    const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].join('\r\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = [header, ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", "routes_export.csv");
     document.body.appendChild(link);
     link.click();
@@ -336,7 +337,7 @@ export function ManageRoutes() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-slate-900 text-xs">{assignedBus?.licensePlate || route.bus?.name || 'Unassigned'}</p>
+                    <p className="font-semibold text-slate-900 text-xs">{assignedBus?.registrationNumber || route.bus?.name || 'Unassigned'}</p>
                     <p className="text-[10px] text-slate-500">{assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver'}</p>
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-700 text-xs">{stopsCount} Stops</td>
@@ -485,11 +486,11 @@ export function ManageRoutes() {
                     label: (
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${bus.isAvailable !== false ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className={bus.isAvailable === false ? 'text-slate-400' : ''}>{bus.licensePlate}</span>
+                        <span className={bus.isAvailable === false ? 'text-slate-400' : ''}>{bus.registrationNumber}</span>
                       </div>
                     ),
                     subLabel: bus.capacity ? `${bus.capacity} seats` : undefined,
-                    searchValue: bus.licensePlate
+                    searchValue: bus.registrationNumber
                   })).sort((a, b) => {
                     const aAvail = buses.find(bus => bus.id === a.value)?.isAvailable !== false;
                     const bAvail = buses.find(bus => bus.id === b.value)?.isAvailable !== false;

@@ -1,12 +1,12 @@
 import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+
 
 interface SummaryCardsProps {
   totalStudents: number;
   stats: any;
   presentCount: number;
   boardedPercentage: number;
-  absentCount: number;
+  notScannedCount: number;
   dynamicAttendanceData: any[];
 }
 
@@ -15,7 +15,7 @@ export function SummaryCards({
   stats,
   presentCount,
   boardedPercentage,
-  absentCount,
+  notScannedCount,
   dynamicAttendanceData
 }: SummaryCardsProps) {
   return (
@@ -47,12 +47,15 @@ export function SummaryCards({
           </div>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
-          <p className="text-sm font-semibold text-slate-500">Absent Today</p>
+          {/* Was "Absent Today". No scan is not the same fact as absent — before the
+              morning run every child is unscanned, and the system cannot tell a child
+              who has not boarded yet from one who never will. */}
+          <p className="text-sm font-semibold text-slate-500">Not Scanned Yet</p>
           <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-4xl font-bold text-slate-900">{absentCount}</span>
+            <span className="text-4xl font-bold text-slate-900">{notScannedCount}</span>
           </div>
-          <p className="text-xs text-slate-400 font-medium text-right underline cursor-pointer hover:text-slate-600 transition-colors">
-            Leave Tracking
+          <p className="text-xs text-slate-400 font-medium text-right">
+            No boarding recorded today
           </p>
         </div>
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">

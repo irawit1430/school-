@@ -1,14 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket } from '@/lib/api';
+import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
-import DynamicMap from '@/components/map/DynamicMap';
-import { clsx } from 'clsx';
-import Link from 'next/link';
-import { Card, CardHeader } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
 import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
 import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
@@ -74,7 +67,7 @@ export function Overview() {
         setDrivers(driversData);
       } catch (error) {
         console.error('Failed to load overview data:', error);
-        import('react-hot-toast').then(toast => toast.default.error('Failed to load dashboard data'));
+        toast.error('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
@@ -118,7 +111,7 @@ export function Overview() {
       toast.success('Leave approved successfully');
     } catch (e) {
       console.error(e);
-      toast.error('Failed to approve leave');
+      toast.error(apiErrorMessage(e, 'Failed to approve leave.'));
     }
   };
 
@@ -129,11 +122,11 @@ export function Overview() {
       toast.success('Leave rejected successfully');
     } catch (e) {
       console.error(e);
-      toast.error('Failed to reject leave');
+      toast.error(apiErrorMessage(e, 'Failed to reject leave.'));
     }
   };
 
-  const activeBusesCount = buses.filter(b => b.status === 'active').length;
+
   
   // Transform leaves from API to match UI (useMemo added for performance)
   const displayLeaves = useMemo(() => 

@@ -3,9 +3,11 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchDrivers, createDriver, fetchBuses, fetchRoutes, createTrip, updateTripStatus } from '@/lib/api';
-import { User, Mail, Bus, Clock, MoreVertical, X, CheckCircle, Copy } from 'lucide-react';
+import { fetchDrivers, createDriver, updateDriver, deleteDriver, fetchBuses, fetchRoutes, createTrip, updateTripStatus, updateTrip, apiErrorMessage } from '@/lib/api';
+import { activeTripsSoonestFirst, describeTrip } from '@/lib/trips';
+import { User, Mail, Bus, Clock, MoreVertical, X, CheckCircle, Copy, Edit2, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import toast from 'react-hot-toast';
 
 export function DriversList() {
   const [drivers, setDrivers] = useState<any[]>([]);
@@ -16,6 +18,46 @@ export function DriversList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editDriverId, setEditDriverId] = useState<string | null>(null);
+  const [editFormData, setEditFormData] = useState({ name: '', email: '', phone: '', password: '' });
+
+  const handleOpenEdit = (driver: any) => {
+    setEditDriverId(driver.id);
+    setEditFormData({ name: driver.name, email: driver.email, phone: driver.phone || '', password: '' });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDriverId) return;
+    setIsSubmitting(true);
+    try {
+      const dataToUpdate: any = { name: editFormData.name, email: editFormData.email };
+      if (editFormData.phone !== undefined) dataToUpdate.phone = editFormData.phone;
+      if (editFormData.password) dataToUpdate.password = editFormData.password;
+      await updateDriver(editDriverId, dataToUpdate);
+      setIsEditModalOpen(false);
+      loadData();
+      toast.success('Driver updated successfully');
+    } catch (error: any) {
+      toast.error(apiErrorMessage(error, 'Failed to update driver.'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteDriver = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this driver?')) return;
+    try {
+      await deleteDriver(id);
+      loadData();
+      toast.success('Driver deleted successfully');
+    } catch (error: any) {
+      toast.error(apiErrorMessage(error, 'Failed to delete driver.'));
+    }
+  };
   
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [assignFormData, setAssignFormData] = useState({ driverId: '', busId: '', routeId: '' });
@@ -56,7 +98,7 @@ export function DriversList() {
       loadData();
     } catch (err) {
       console.error('Failed to create driver', err);
-      alert('Failed to create driver. Email might already exist.');
+      toast.error(apiErrorMessage(err, 'Failed to create driver.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -81,33 +123,35 @@ export function DriversList() {
       loadData(); // Refresh to show assignment
     } catch (err) {
       console.error('Failed to assign trip', err);
-      alert('Failed to assign trip. Please try again.');
+      toast.error(apiErrorMessage(err, 'Failed to assign trip.'));
     } finally {
       setIsAssignSubmitting(false);
     }
   };
 
-  const handleUnassignTrip = async (tripId: string) => {
-    console.log("Unassigning trip ID:", tripId);
-    if (!tripId) {
-      alert("Error: No Trip ID found for this assignment.");
+  // Takes the trip, not just its id: the confirmation has to name what it is about to
+  // cancel. A driver can have more than one live trip, and this button acts on whichever
+  // one the row happens to be showing.
+  const handleUnassignTrip = async (trip: any) => {
+    if (!trip?.id) {
+      toast.error("Error: No Trip ID found for this assignment.");
       return;
     }
-    if (!window.confirm('Are you sure you want to unassign this trip from the driver?')) return;
+    if (!window.confirm(`Cancel this trip?\n\n${describeTrip(trip)}\n\nThe driver and bus are freed for other trips.`)) return;
     try {
-      // Import updateTripStatus if not already imported
-      await updateTripStatus(tripId, 'CANCELLED');
+      await updateTripStatus(trip.id, 'CANCELLED');
       loadData();
-    } catch (err: any) {
+      toast.success('Trip cancelled');
+    } catch (err) {
       console.error('Failed to unassign trip', err);
-      alert('Failed to unassign trip. Error: ' + (err.message || 'Unknown error'));
+      toast.error(apiErrorMessage(err, 'Failed to unassign trip.'));
     }
   };
   
   const copyCredentials = () => {
     if (createdCredentials) {
       navigator.clipboard.writeText(`Email: ${createdCredentials.email}\nPassword: ${createdCredentials.tempPassword}`);
-      alert("Copied to clipboard!");
+      toast.success("Copied to clipboard!");
     }
   };
 
@@ -156,9 +200,12 @@ export function DriversList() {
                   </td>
                 </tr>
               ) : drivers.map((driver: any) => {
-                const activeTrips = (driver.driverTrips || []).filter((t: any) => t.status === 'ON_SCHEDULE' || t.status === 'PLANNED');
+                // Soonest-first, and DELAYED counts as live — a driver whose bus is
+                // running late is not free. Both were wrong here, and together they
+                // pointed Unassign at a trip the admin was not looking at.
+                const activeTrips = activeTripsSoonestFirst(driver.driverTrips);
                 const isActive = activeTrips.length > 0;
-                const currentTrip = activeTrips.length > 0 ? activeTrips[0] : null;
+                const currentTrip = activeTrips[0] ?? null;
                 
                 return (
                 <tr key={driver.id} className="hover:bg-slate-50/50 transition-colors group">
@@ -187,30 +234,48 @@ export function DriversList() {
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs font-semibold text-slate-700">
-                      {currentTrip && currentTrip.bus ? currentTrip.bus.licensePlate : 'Unassigned'}
+                      {currentTrip && currentTrip.bus ? currentTrip.bus.registrationNumber : 'Unassigned'}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <span className="text-xs text-slate-600">
                       {currentTrip && currentTrip.route ? currentTrip.route.name : '—'}
+                      {activeTrips.length > 1 && (
+                        <span className="ml-1.5 text-[10px] font-semibold text-amber-700" title={activeTrips.slice(1).map(describeTrip).join('\n')}>
+                          +{activeTrips.length - 1} more
+                        </span>
+                      )}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {isActive && currentTrip ? (
-                      <button 
-                        onClick={() => handleUnassignTrip(currentTrip.id)}
-                        className="text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
-                      >
-                        Unassign Trip
+                    <div className="flex items-center justify-end gap-2">
+                      {isActive && currentTrip ? (
+                        <button 
+                          onClick={() => handleUnassignTrip(currentTrip)}
+                          className="text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
+                        >
+                          Unassign Trip
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => handleOpenAssign(driver)}
+                          className="text-xs font-semibold text-orange-600 hover:orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
+                        >
+                          Assign Trip
+                        </button>
+                      )}
+                      <button onClick={() => handleOpenEdit(driver)} className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors" title="Edit Driver">
+                        <Edit2 size={16} />
                       </button>
-                    ) : (
                       <button 
-                        onClick={() => handleOpenAssign(driver)}
-                        className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
+                        onClick={() => handleDeleteDriver(driver.id)} 
+                        disabled={isActive}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:text-slate-400 disabled:hover:bg-transparent rounded-md transition-colors" 
+                        title={isActive ? "Cannot delete active driver" : "Delete Driver"}
                       >
-                        Assign Trip
+                        <Trash2 size={16} />
                       </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               )})}
@@ -244,7 +309,7 @@ export function DriversList() {
                 >
                   <option value="">Select a Bus</option>
                   {buses.map(bus => (
-                    <option key={bus.id} value={bus.id}>{bus.licensePlate} ({bus.capacity} seats)</option>
+                    <option key={bus.id} value={bus.id}>{bus.registrationNumber} ({bus.capacity} seats)</option>
                   ))}
                 </select>
               </div>
@@ -338,6 +403,89 @@ export function DriversList() {
                   className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
                 >
                   {isSubmitting ? 'Creating...' : 'Add Driver'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-lg">Edit Driver</h3>
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Driver Name <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  type="text"
+                  required
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Email Address <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  type="email"
+                  required
+                  value={editFormData.email}
+                  onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  Phone Number
+                </label>
+                <input 
+                  type="tel" pattern="[0-9]{10}" title="Must be 10 digits"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+                  placeholder="e.g. 9876543210"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                  New Password <span className="text-slate-400 font-normal text-xs">(leave blank to keep current)</span>
+                </label>
+                <input 
+                  type="text"
+                  value={editFormData.password}
+                  onChange={(e) => setEditFormData({...editFormData, password: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
+                  placeholder="Enter new password"
+                  minLength={8}
+                />
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
+                >
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

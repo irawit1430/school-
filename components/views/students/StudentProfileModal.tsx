@@ -40,7 +40,7 @@ export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModa
               <span className="text-slate-500 font-semibold text-sm">Assigned Route</span>
               <span className="text-slate-900 font-bold text-sm">{viewStudent.route}</span>
             </div>
-                        <div className="flex justify-between border-b border-slate-100 pb-2">
+            <div className="flex justify-between border-b border-slate-100 pb-2">
               <span className="text-slate-500 font-semibold text-sm">Guardian Phone</span>
               <span className="text-slate-900 font-bold text-sm">{viewStudent.guardianPhone || 'N/A'}</span>
             </div>
@@ -49,9 +49,8 @@ export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModa
               <span className={clsx(
                 "px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border",
                 viewStudent.status === 'Boarded' && "bg-emerald-50 text-emerald-700 border-emerald-100",
-                viewStudent.status === 'Absent' && "bg-slate-100 text-slate-600 border-slate-200",
-                viewStudent.status === 'Delayed' && "bg-amber-50 text-amber-700 border-amber-100",
-                viewStudent.status === 'At School' && "bg-orange-50 text-orange-700 border-orange-100"
+                viewStudent.status === 'Not scanned' && "bg-slate-100 text-slate-600 border-slate-200",
+                viewStudent.status === 'Dropped off' && "bg-orange-50 text-orange-700 border-orange-100"
               )}>{viewStudent.status}</span>
             </div>
             <div className="flex justify-between">

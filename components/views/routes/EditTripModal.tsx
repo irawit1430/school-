@@ -105,7 +105,7 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess
               Bus
             </label>
             <SearchableSelect 
-              options={formatOptions(buses, 'licensePlate')}
+              options={formatOptions(buses, 'registrationNumber')}
               value={busId}
               onChange={setBusId}
               placeholder="Select a bus"

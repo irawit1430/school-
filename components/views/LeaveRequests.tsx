@@ -3,9 +3,10 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 import React, { useState, useEffect } from 'react';
-import { fetchLeaves, approveLeave, rejectLeave } from '@/lib/api';
+import { fetchLeaves, approveLeave, rejectLeave, apiErrorMessage } from '@/lib/api';
 import { CheckCircle, XCircle, Clock, Filter, Download, User, Calendar, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
+import toast from 'react-hot-toast';
 
 export function LeaveRequests() {
   const [leaves, setLeaves] = useState<any[]>([]);
@@ -39,7 +40,7 @@ export function LeaveRequests() {
       loadLeaves();
     } catch (err) {
       console.error(err);
-      alert('Failed to approve leave');
+      toast.error(apiErrorMessage(err, 'Failed to approve leave.'));
     } finally {
       setProcessingId(null);
     }
@@ -52,28 +53,33 @@ export function LeaveRequests() {
       loadLeaves();
     } catch (err) {
       console.error(err);
-      alert('Failed to reject leave');
+      toast.error(apiErrorMessage(err, 'Failed to reject leave.'));
     } finally {
       setProcessingId(null);
     }
   };
 
   const handleExportCSV = () => {
-    if (leaves.length === 0) return alert('No leaves to export');
+    if (leaves.length === 0) return toast.error('No leaves to export');
     const headers = ['Student Name,RFID,Start Date,End Date,Reason,Status'];
+    const escape = (v: any) => {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
+    };
     const rows = leaves.map((leave: any) => {
       const studentName = leave.student?.name || 'Unknown';
       const rfid = leave.student?.rfidTag || 'N/A';
       const startDate = new Date(leave.startDate).toLocaleDateString();
       const endDate = new Date(leave.endDate).toLocaleDateString();
       const status = leave.status || 'PENDING';
-      return `"${studentName}","${rfid}","${startDate}","${endDate}","${leave.reason}","${status}"`;
+      return [studentName, rfid, startDate, endDate, leave.reason, status].map(escape).join(',');
     });
     
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = [headers, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", "leaves_export.csv");
     document.body.appendChild(link);
     link.click();
