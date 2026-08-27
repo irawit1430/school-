@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { io, Socket } from 'socket.io-client';
 
-const API_BASE = `${CONFIG.API_BASE_URL}/api`;
+export const API_BASE = `${CONFIG.API_BASE_URL}/api`;
 
 // ─── Token / User helpers ──────────────────────────────────
 export const getToken = (): string | null => {
