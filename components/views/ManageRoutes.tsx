@@ -122,14 +122,14 @@ export function ManageRoutes() {
     return buses.reduce((acc, bus) => {
       acc[bus.id] = bus;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, { id: string; licensePlate: string | undefined; capacity: number | undefined }>);
   }, [buses]);
 
   const driversMap = useMemo(() => {
     return drivers.reduce((acc, driver) => {
       acc[driver.id] = driver;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, { id: string; name: string; email: string | undefined }>);
   }, [drivers]);
 
   return (
