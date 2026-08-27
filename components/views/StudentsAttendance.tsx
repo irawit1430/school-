@@ -6,8 +6,25 @@ import { Download, Plus, Eye, Mail, AlertTriangle, Clock, Info, X, CheckCircle }
 import { clsx } from 'clsx';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
+export interface Student {
+  id: string;
+  name: string;
+  rfidTag?: string;
+  grade?: string;
+  assignedRoute?: string;
+  routeMappings?: Array<{ routeStop: { route: { name: string } } }>;
+  boardingStatus?: string;
+  lastCheckIn?: string;
+  photoUrl?: string;
+  tag?: string;
+  route?: string;
+  status?: string;
+  time?: string;
+  avatar?: string;
+}
+
 export function StudentsAttendance() {
-  const [studentsData, setStudentsData] = useState<any[]>([]);
+  const [studentsData, setStudentsData] = useState<Student[]>([]);
   const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [routes, setRoutes] = useState<any[]>([]);
@@ -19,7 +36,7 @@ export function StudentsAttendance() {
   const [credentialsPopup, setCredentialsPopup] = useState<{email: string, temporaryPassword: string} | null>(null);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignStudent, setAssignStudent] = useState<any>(null);
+  const [assignStudent, setAssignStudent] = useState<Student | null>(null);
   const [assignFormData, setAssignFormData] = useState({ routeId: '', routeStopId: '' });
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
 
@@ -43,7 +60,7 @@ export function StudentsAttendance() {
     loadData();
   }, []);
 
-  const handleOpenAssign = (student: any) => {
+  const handleOpenAssign = (student: Student) => {
     setAssignStudent(student);
     setAssignFormData({ routeId: '', routeStopId: '' });
     setIsAssignModalOpen(true);
@@ -238,7 +255,7 @@ export function StudentsAttendance() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {displayStudents.map((student: any) => (
+                {displayStudents.map((student: Student) => (
                   <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
