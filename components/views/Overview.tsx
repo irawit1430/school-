@@ -5,6 +5,16 @@ import { Bus, Map as MapIcon, AlertTriangle, Users, CalendarDays, CheckCircle, C
 import { clsx } from 'clsx';
 
 
+interface DisplayLeave {
+  id: string;
+  student: string;
+  initials: string;
+  date: string;
+  reason: string;
+  color: string;
+  rawId?: string;
+}
+
 export function Overview() {
   const [buses, setBuses] = useState<any[]>([]);
   const [leaves, setLeaves] = useState<any[]>([]);
@@ -60,7 +70,7 @@ export function Overview() {
   const activeBusesCount = buses.filter(b => b.status === 'active').length;
   
   // Transform leaves from API to match UI
-  const displayLeaves = leaves.slice(0, 5).map(leave => ({
+  const displayLeaves: DisplayLeave[] = leaves.slice(0, 5).map(leave => ({
     id: leave.id,
     student: leave.student?.name || 'Unknown',
     initials: (leave.student?.name || 'U').substring(0, 2).toUpperCase(),
@@ -262,13 +272,13 @@ export function Overview() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button 
-                          onClick={() => handleApproveLeave((leave as any).rawId || (leave as any).id)}
+                          onClick={() => handleApproveLeave(leave.rawId || leave.id)}
                           className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
                         >
                           Approve
                         </button>
                         <button 
-                          onClick={() => handleRejectLeave((leave as any).rawId || (leave as any).id)}
+                          onClick={() => handleRejectLeave(leave.rawId || leave.id)}
                           className="bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-200 px-3 py-1 rounded text-xs font-medium transition-colors"
                         >
                           Reject
