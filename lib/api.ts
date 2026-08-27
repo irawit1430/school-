@@ -8,30 +8,47 @@ const getHeaders = () => {
   };
 };
 
+let schoolIdPromise: Promise<string | null> | null = null;
+
+// For testing purposes
+export const clearSchoolIdCache = () => {
+  schoolIdPromise = null;
+};
+
 const getSchoolId = async () => {
-  const user = localStorage.getItem('user');
-  if (user) {
-    try {
-      const parsed = JSON.parse(user);
-      if (parsed.schoolId) {
-        return parsed.schoolId;
-      }
-      
-      if (parsed.role === 'SUPER_ADMIN') {
-         const res = await fetch(`${API_BASE}/schools`, { headers: getHeaders() });
-         if (res.ok) {
-           const responseData = await res.json();
-           const schools = Array.isArray(responseData) ? responseData : responseData.data;
-           if (schools && schools.length > 0) {
-             return schools[0].id;
-           }
-         }
-      }
-    } catch (e) {
-      return null;
-    }
+  if (schoolIdPromise) {
+    return schoolIdPromise;
   }
-  return null;
+
+  schoolIdPromise = (async () => {
+    const user = localStorage.getItem('user');
+    if (user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed.schoolId) {
+          return parsed.schoolId;
+        }
+
+        if (parsed.role === 'SUPER_ADMIN') {
+           const res = await fetch(`${API_BASE}/schools`, { headers: getHeaders() });
+           if (res.ok) {
+             const responseData = await res.json();
+             const schools = Array.isArray(responseData) ? responseData : responseData.data;
+             if (schools && schools.length > 0) {
+               parsed.schoolId = schools[0].id;
+               localStorage.setItem('user', JSON.stringify(parsed));
+               return schools[0].id;
+             }
+           }
+        }
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  })();
+
+  return schoolIdPromise;
 };
 
 export const fetchBuses = async () => {
