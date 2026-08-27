@@ -4,6 +4,19 @@ import { fetchLeaves, approveLeave, rejectLeave } from '@/lib/api';
 import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 
+export interface Leave {
+  id: string;
+  startDate: string | Date;
+  endDate: string | Date;
+  status: string;
+  reason: string;
+  student?: {
+    name: string;
+    rfidTag?: string;
+  };
+}
+
+
 
 const StatusBadge = ({ status }: { status: string }) => {
   switch (status?.toUpperCase()) {
@@ -16,7 +29,7 @@ const StatusBadge = ({ status }: { status: string }) => {
   }
 };
 
-const LeaveRow = ({ leave, handleApprove, handleReject }: { leave: any, handleApprove: (id: string) => void, handleReject: (id: string) => void }) => {
+const LeaveRow = ({ leave, handleApprove, handleReject }: { leave: Leave, handleApprove: (id: string) => void, handleReject: (id: string) => void }) => {
   const studentName = leave.student?.name || 'Unknown Student';
   const initials = studentName.substring(0, 2).toUpperCase();
   const startDate = new Date(leave.startDate).toLocaleDateString();
@@ -82,7 +95,7 @@ const LeaveRow = ({ leave, handleApprove, handleReject }: { leave: any, handleAp
 };
 
 export function LeaveRequests() {
-  const [leaves, setLeaves] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
 
