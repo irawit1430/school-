@@ -15,6 +15,7 @@ import { AssignBusModal } from './students/AssignBusModal';
 import { StudentProfileModal } from './students/StudentProfileModal';
 import { MessageParentModal } from './students/MessageParentModal';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { avatarFor } from '@/lib/avatar';
 
 export function StudentsAttendance() {
   const [studentsData, setStudentsData] = useState<any[]>([]);
@@ -275,7 +276,7 @@ export function StudentsAttendance() {
         guardianPhone: s.parentPhone || s.guardianPhone || '',
         parentName: s.parentName || '',
         time,
-        avatar: s.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name)}&background=random`
+        avatar: s.photoUrl || avatarFor(s.name)
       };
     });
 

@@ -11,6 +11,7 @@ import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
 import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
+import { avatarFor } from '@/lib/avatar';
 
 interface HeaderProps {
   title?: string;
@@ -426,7 +427,7 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
               <span className="text-[10px] uppercase tracking-wider text-slate-500 mt-1">{userRole.replace('_', ' ')}</span>
             </div>
             <img 
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`}
+              src={avatarFor(userName)}
               alt={userName} 
               className="w-9 h-9 rounded-full border border-slate-200"
             />

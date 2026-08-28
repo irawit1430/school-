@@ -54,21 +54,27 @@ export function Overview() {
     useEffect(() => {
     const loadData = async () => {
       try {
-        const [busesData, leavesData, statsData, routesData, driversData] = await Promise.all([
+        // Routes and drivers only feed the Active Routes widget, and the routes payload
+        // carries every stop on every route. Blocking the metric cards and the map on
+        // them meant the whole dashboard waited for the heaviest call of the five.
+        Promise.all([fetchRoutes(), fetchDrivers()])
+          .then(([routesData, driversData]) => {
+            setRoutes(routesData);
+            setDrivers(driversData);
+          })
+          .catch(err => console.warn('Failed to load route activity', err));
+
+        const [busesData, leavesData, statsData] = await Promise.all([
           fetchBuses(),
           fetchLeaves('pending'),
-          fetchStats(),
-          fetchRoutes(),
-          fetchDrivers()
+          fetchStats()
         ]);
         setBuses(busesData);
         setLeaves(leavesData);
         setStats(statsData);
-        setRoutes(routesData);
-        setDrivers(driversData);
       } catch (error) {
         console.error('Failed to load overview data:', error);
-        toast.error('Failed to load dashboard data');
+        toast.error(apiErrorMessage(error, 'Failed to load dashboard data.'));
       } finally {
         setLoading(false);
       }
