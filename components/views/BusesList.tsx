@@ -24,7 +24,7 @@ export function BusesList() {
     try {
       const [bData, rData, dData] = await Promise.all([
         fetchBuses(),
-        fetchRoutes(),
+        fetchRoutes({ summary: true }),
         fetchDrivers()
       ]);
       setBuses(bData);

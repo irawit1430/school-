@@ -57,6 +57,11 @@ export function Overview() {
         // Routes and drivers only feed the Active Routes widget, and the routes payload
         // carries every stop on every route. Blocking the metric cards and the map on
         // them meant the whole dashboard waited for the heaviest call of the five.
+        //
+        // Deliberately NOT ?summary=1: the summary shape has no `trips`, and the widget
+        // below is built entirely from r.trips. Switching this to summary makes the
+        // Active Routes panel silently empty — it renders fine, it just shows nothing.
+        // It needs trips on the summary payload before it can move.
         Promise.all([fetchRoutes(), fetchDrivers()])
           .then(([routesData, driversData]) => {
             setRoutes(routesData);

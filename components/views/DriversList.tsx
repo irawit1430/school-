@@ -68,7 +68,7 @@ export function DriversList() {
 
   const loadData = () => {
     setLoading(true);
-    Promise.all([fetchDrivers(), fetchBuses(), fetchRoutes()])
+    Promise.all([fetchDrivers(), fetchBuses(), fetchRoutes({ summary: true })])
       .then(([driversData, busesData, routesData]) => {
         setDrivers(driversData);
         setBuses(busesData);

@@ -56,11 +56,10 @@ export function StudentsAttendance() {
   const loadData = () => {
     setLoading(true);
     setError(null);
-    // Routes and notifications are not on the critical path — routes only fills the
-    // Assign Bus dropdown, and the routes payload carries stops and trips. Waiting on
-    // them held the whole table behind the slowest of five calls. They land when they
-    // land; the table renders as soon as the students and their attendance are in.
-    fetchRoutes().then(setRoutes).catch(err => console.warn('Failed to load routes', err));
+    // Summary only: this page needs route *names* for the Assign Bus dropdown, and the
+    // full payload carries every stop and every encoded polyline. The stops are fetched
+    // on demand when that dialog actually opens — see handleOpenAssign.
+    fetchRoutes({ summary: true }).then(setRoutes).catch(err => console.warn('Failed to load routes', err));
     fetchNotifications().then(setNotifications).catch(err => console.warn('Failed to load alerts', err));
 
     Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats()])
@@ -82,10 +81,20 @@ export function StudentsAttendance() {
     loadData();
   }, []);
 
+  // The dialog needs each route's stops, which the summary payload omits. Fetched here
+  // rather than on page load, so browsing students never pays for polylines — and only
+  // once, since the full list is kept after the first open.
+  const [fullRoutesLoaded, setFullRoutesLoaded] = useState(false);
+
   const handleOpenAssign = (student: any) => {
     setAssignStudent(student);
     setAssignFormData({ routeId: '', routeStopId: '' });
     setIsAssignModalOpen(true);
+    if (!fullRoutesLoaded) {
+      fetchRoutes()
+        .then(full => { setRoutes(full); setFullRoutesLoaded(true); })
+        .catch(err => toast.error(apiErrorMessage(err, 'Could not load stops for these routes.')));
+    }
   };
 
   const handleAssignSubmit = async (e: React.FormEvent) => {

@@ -291,10 +291,20 @@ export const rejectLeave = (id: string) =>
   api(`/leaves/${id}/reject`, { method: 'PUT' });
 
 // ─── Routes ────────────────────────────────────────────────
-export const fetchRoutes = async () => {
+/**
+ * Routes for the current school.
+ *
+ * The full payload carries each route's encoded OSRM polyline and every one of its
+ * stops — for a twelve-route school that is a dozen polylines and hundreds of stop
+ * rows. Pass `summary` when you only need names and counts, which is most callers.
+ *
+ * Summary returns { id, name, distanceKm, estimatedDuration, stopCount } — note it has
+ * neither `trips` nor `stops`, so anything reading those needs the full shape.
+ */
+export const fetchRoutes = async (opts: { summary?: boolean } = {}) => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
-  return api(`/schools/${schoolId}/routes`);
+  return api(`/schools/${schoolId}/routes${opts.summary ? '?summary=1' : ''}`);
 };
 
 
