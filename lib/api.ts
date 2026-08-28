@@ -1,5 +1,8 @@
 import { CONFIG } from './config';
 import { io, Socket } from 'socket.io-client';
+import { cachedGet, clearApiCache } from './apiCache';
+
+export { clearApiCache };
 
 export const API_BASE = `${CONFIG.API_BASE_URL}/api`;
 
@@ -34,6 +37,7 @@ export const clearAuth = () => {
     localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
   }
   clearSchoolIdCache();
+  clearApiCache();
 };
 
 // ─── Error class with status + validation issues ───────────
@@ -74,7 +78,7 @@ const getHeaders = (): Record<string, string> => {
   return headers;
 };
 
-async function api<T = any>(
+async function request<T = any>(
   path: string,
   { method = 'GET', body, auth = true }: { method?: string; body?: any; auth?: boolean } = {}
 ): Promise<T> {
@@ -129,6 +133,23 @@ async function api<T = any>(
   }
 
   return data as T;
+}
+
+/**
+ * GETs are served from the short cache and deduplicated while in flight; anything else
+ * goes straight out and then invalidates everything, because a write can change what any
+ * other request would have returned.
+ */
+async function api<T = any>(
+  path: string,
+  opts: { method?: string; body?: any; auth?: boolean } = {}
+): Promise<T> {
+  if ((opts.method ?? 'GET') !== 'GET') {
+    const data = await request<T>(path, opts);
+    clearApiCache();
+    return data;
+  }
+  return cachedGet<T>(path, () => request<T>(path, opts));
 }
 
 // ─── SchoolId helper ───────────────────────────────────────
