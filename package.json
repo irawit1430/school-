@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "clean": "next clean",
-    "deploy": "next build && firebase deploy --only hosting --project rytfull-media01"
+    "deploy": "next build && npx firebase deploy --only hosting --project rytfull-media01"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
