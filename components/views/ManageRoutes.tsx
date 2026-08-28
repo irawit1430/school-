@@ -199,20 +199,11 @@ export function ManageRoutes() {
     document.body.removeChild(link);
   };
 
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6 animate-pulse">
-        <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-slate-100 h-24 rounded-xl border border-slate-200"></div>
-          ))}
-        </div>
-        <div className="bg-slate-100 h-96 rounded-xl border border-slate-200 mt-6"></div>
-      </div>
-    );
-  }
-
+  // These must stay above every early return below. They were inserted underneath the
+  // loading guard by an automated merge, so they were skipped on the first render and
+  // ran on the next — React counted more hooks than the render before and threw
+  // "Rendered more hooks than during the previous render", crashing this page the
+  // instant the routes finished loading. It compiled fine, which is why it shipped.
   const busesMap = useMemo(() => {
     return buses.reduce((acc, bus) => {
       acc[bus.id] = bus;
@@ -226,6 +217,20 @@ export function ManageRoutes() {
       return acc;
     }, {} as Record<string, { id: string; name: string; email: string | undefined }>);
   }, [drivers]);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 animate-pulse">
+        <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-slate-100 h-24 rounded-xl border border-slate-200"></div>
+          ))}
+        </div>
+        <div className="bg-slate-100 h-96 rounded-xl border border-slate-200 mt-6"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
