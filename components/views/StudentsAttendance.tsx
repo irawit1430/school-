@@ -55,13 +55,18 @@ export function StudentsAttendance() {
   const loadData = () => {
     setLoading(true);
     setError(null);
-    Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats(), fetchRoutes(), fetchNotifications()])
-      .then(([studentsRes, attendanceRes, statsRes, routesRes, notificationsRes]) => {
+    // Routes and notifications are not on the critical path — routes only fills the
+    // Assign Bus dropdown, and the routes payload carries stops and trips. Waiting on
+    // them held the whole table behind the slowest of five calls. They land when they
+    // land; the table renders as soon as the students and their attendance are in.
+    fetchRoutes().then(setRoutes).catch(err => console.warn('Failed to load routes', err));
+    fetchNotifications().then(setNotifications).catch(err => console.warn('Failed to load alerts', err));
+
+    Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats()])
+      .then(([studentsRes, attendanceRes, statsRes]) => {
         setStudentsData(studentsRes);
         setAttendanceLogs(attendanceRes);
         setStats(statsRes);
-        setRoutes(routesRes);
-        setNotifications(notificationsRes);
         setLoading(false);
       })
       .catch(err => {

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
+import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
 import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
@@ -81,25 +82,15 @@ export function Overview() {
       console.log('Connected to fleet socket for Dashboard Map');
     });
 
-    socket.on('location_update', (data: any) => {
+    const stopPositions = subscribeToBusPositions(socket, batch => {
       setBuses(prev => prev.map(b => {
-        if (b.id === data.busId || b.id === data.id) {
-          return {
-            ...b,
-            status: data.status || b.status,
-            gpsLogs: [{
-              lat: data.lat,
-              lng: data.lng,
-              speed: data.speed ?? 0,
-              timestamp: data.timestamp || new Date().toISOString()
-            }]
-          };
-        }
-        return b;
+        const data = batch.get(b.id);
+        return data ? mergeBusPosition(b, data) : b;
       }));
     });
 
     return () => {
+      stopPositions();
       socket.disconnect();
     };
   }, []);

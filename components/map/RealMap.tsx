@@ -7,9 +7,27 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
 import 'leaflet-defaulticon-compatibility';
 import { CONFIG } from '@/lib/config';
-import { Bus, AlertTriangle } from 'lucide-react';
-import { renderToString } from 'react-dom/server';
 import { clsx } from 'clsx';
+
+// Marker HTML used to be built with react-dom/server's renderToString, which shipped
+// the whole server renderer (~86 KB) to the browser to produce a few divs. These are
+// the same two lucide glyphs, inlined — identical output, none of the payload.
+const SVG_OPEN =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+  'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+
+const BUS_SVG = SVG_OPEN +
+  '<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/>' +
+  '<path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/>' +
+  '<circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/></svg>';
+
+const ALERT_SVG = SVG_OPEN +
+  '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>' +
+  '<path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+
+// Bus names come from user data and go straight into marker HTML.
+const escapeHtml = (v: string) =>
+  v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 interface RealMapProps {
   buses: any[];
@@ -138,35 +156,32 @@ export default function RealMap({
     const bgColorClass = isAlert ? 'bg-red-500' : isDelayed ? 'bg-amber-500' : 'bg-emerald-500';
     const labelBgClass = isAlert ? 'bg-red-900' : isDelayed ? 'bg-amber-900' : 'bg-slate-900';
 
-    const iconHtml = renderToString(
-      <div className="flex flex-col items-center group cursor-pointer">
-        {/* Pulsing ring when selected */}
-        <div className="relative flex items-center justify-center">
-          {isSelected && (
-            <span className="absolute -inset-2.5 rounded-full bg-orange-500/40 animate-ping"></span>
-          )}
-          {isSelected && (
-            <span className="absolute -inset-1.5 rounded-full border-2 border-orange-500 animate-pulse"></span>
-          )}
-          
-          <div className={clsx(
-            "w-9 h-9 rounded-full text-white flex items-center justify-center shadow-xl border-2 transition-transform duration-300 relative z-10",
-            isSelected ? "border-orange-500 scale-110 ring-4 ring-orange-500/20" : "border-white",
-            bgColorClass
-          )}>
-            {isAlert ? <AlertTriangle size={16} /> : <Bus size={16} />}
-          </div>
-        </div>
+    const label = escapeHtml(String(bus.name || bus.licensePlate || bus.registrationNumber || 'Bus'));
 
-        {/* Floating Label */}
-        <div className={clsx(
-          "text-white px-2 py-0.5 rounded-md text-[10px] font-bold mt-1.5 shadow-lg whitespace-nowrap transition-all duration-200",
-          isSelected ? "bg-orange-600 ring-1 ring-white/50 scale-105" : labelBgClass
-        )}>
-          {bus.name || bus.licensePlate || bus.registrationNumber || 'Bus'}
-        </div>
-      </div>
+    const ring = isSelected
+      ? '<span class="absolute -inset-2.5 rounded-full bg-orange-500/40 animate-ping"></span>' +
+        '<span class="absolute -inset-1.5 rounded-full border-2 border-orange-500 animate-pulse"></span>'
+      : '';
+
+    const puckClasses = clsx(
+      "w-9 h-9 rounded-full text-white flex items-center justify-center shadow-xl border-2 transition-transform duration-300 relative z-10",
+      isSelected ? "border-orange-500 scale-110 ring-4 ring-orange-500/20" : "border-white",
+      bgColorClass
     );
+
+    const labelClasses = clsx(
+      "text-white px-2 py-0.5 rounded-md text-[10px] font-bold mt-1.5 shadow-lg whitespace-nowrap transition-all duration-200",
+      isSelected ? "bg-orange-600 ring-1 ring-white/50 scale-105" : labelBgClass
+    );
+
+    const iconHtml =
+      '<div class="flex flex-col items-center group cursor-pointer">' +
+        '<div class="relative flex items-center justify-center">' +
+          ring +
+          '<div class="' + puckClasses + '">' + (isAlert ? ALERT_SVG : BUS_SVG) + '</div>' +
+        '</div>' +
+        '<div class="' + labelClasses + '">' + label + '</div>' +
+      '</div>';
 
     const icon = L.divIcon({
       html: iconHtml,

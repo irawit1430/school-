@@ -4,6 +4,7 @@ import { Bell, Settings, Filter, Layers, Bus, X, PhoneCall, Focus, MessageSquare
 import { clsx } from 'clsx';
 import { fetchBuses, fetchDrivers, fetchDeviceLocations, connectSocket } from '@/lib/api';
 import { isActiveTrip } from '@/lib/trips';
+import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
 import DynamicMap from '@/components/map/DynamicMap';
 import toast from 'react-hot-toast';
 
@@ -43,25 +44,11 @@ export function LiveFleetMap() {
     const socket = connectSocket();
 
 
-    // Listen to real-time location updates with smooth coordinate interpolation
-    socket.on('location_update', (data: any) => {
+    // Batched, not per-packet: one state update a second regardless of fleet size.
+    const stopPositions = subscribeToBusPositions(socket, batch => {
       setBuses(prev => prev.map(b => {
-        if (b.id === data.busId || b.id === data.id) {
-          return {
-            ...b,
-            capacity: data.capacity || b.capacity,
-            driverName: data.driverName || b.driverName,
-            routeName: data.routeName || b.routeName,
-            status: data.status || b.status,
-            gpsLogs: [{
-              lat: data.lat,
-              lng: data.lng,
-              speed: data.speed ?? 0,
-              timestamp: data.timestamp || new Date().toISOString()
-            }]
-          };
-        }
-        return b;
+        const data = batch.get(b.id);
+        return data ? mergeBusPosition(b, data) : b;
       }));
     });
 
@@ -80,6 +67,7 @@ export function LiveFleetMap() {
 
     return () => {
       clearInterval(identityPoll);
+      stopPositions();
       socket.disconnect();
     };
   }, []);

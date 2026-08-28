@@ -33,6 +33,7 @@ export const clearAuth = () => {
     localStorage.removeItem('token');
     localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
   }
+  clearSchoolIdCache();
 };
 
 // ─── Error class with status + validation issues ───────────
@@ -131,21 +132,46 @@ async function api<T = any>(
 }
 
 // ─── SchoolId helper ───────────────────────────────────────
+// Every fetch resolves the school first, and for a SUPER_ADMIN that meant an extra
+// /schools round trip *per call* — a page doing five parallel fetches paid for five
+// identical lookups before any of its real requests left. Cached for the session, and
+// the in-flight promise is shared so a burst of parallel callers makes one request,
+// not five. Cleared on logout, since the next user may belong elsewhere.
+let schoolIdCache: string | null = null;
+let schoolIdInFlight: Promise<string | null> | null = null;
+
+export const clearSchoolIdCache = () => {
+  schoolIdCache = null;
+  schoolIdInFlight = null;
+};
+
 const getSchoolId = async (): Promise<string | null> => {
   const user = getUser();
   if (!user) return null;
 
   if (user.schoolId) return user.schoolId;
+  if (schoolIdCache) return schoolIdCache;
 
   // SUPER_ADMIN fallback — fetch first school
   if (user.role === 'SUPER_ADMIN') {
-    try {
-      const responseData = await api<any>('/schools');
-      const schools = Array.isArray(responseData) ? responseData : responseData.data;
-      if (schools && schools.length > 0) return schools[0].id;
-    } catch {
-      return null;
+    if (!schoolIdInFlight) {
+      schoolIdInFlight = (async () => {
+        try {
+          const responseData = await api<any>('/schools');
+          const schools = Array.isArray(responseData) ? responseData : responseData.data;
+          if (schools && schools.length > 0) {
+            schoolIdCache = schools[0].id;
+            return schoolIdCache;
+          }
+          return null;
+        } catch {
+          return null;
+        } finally {
+          schoolIdInFlight = null;
+        }
+      })();
     }
+    return schoolIdInFlight;
   }
 
   return null;
