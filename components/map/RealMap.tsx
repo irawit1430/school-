@@ -4,8 +4,16 @@ import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import 'leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css';
-import 'leaflet-defaulticon-compatibility';
+
+// Leaflet's default marker images were being pulled from unpkg.com by the
+// defaulticon-compatibility shim — a third-party CDN request every time a map with
+// default markers opened, on a network a school may well filter. Same three images,
+// served from our own origin.
+L.Icon.Default.mergeOptions({
+  iconUrl: '/leaflet/marker-icon.png',
+  iconRetinaUrl: '/leaflet/marker-icon-2x.png',
+  shadowUrl: '/leaflet/marker-shadow.png',
+});
 import { CONFIG } from '@/lib/config';
 import { clsx } from 'clsx';
 
