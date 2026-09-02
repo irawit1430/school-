@@ -284,6 +284,7 @@ export function StudentsAttendance() {
         // for families with no parent account.
         guardianPhone: s.parentPhone || s.guardianPhone || '',
         parentName: s.parentName || '',
+        parentEmail: s.parentEmail || s.parent?.email || '',
         time,
         avatar: s.photoUrl || avatarFor(s.name)
       };
@@ -476,12 +477,14 @@ export function StudentsAttendance() {
                       <td className="px-4 py-3 font-mono text-xs text-slate-600">{student.time}</td>
                       <td className="px-4 py-3 text-right">
                          <div className="flex items-center justify-end gap-2 text-slate-500">
-                           <button 
-                             onClick={() => handleOpenAssign(student)}
-                             className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors mr-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                           >
-                             Assign Bus
-                           </button>
+                           {student.route === 'Unassigned' && (
+                             <button 
+                               onClick={() => handleOpenAssign(student)}
+                               className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors mr-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                             >
+                               Assign Bus
+                             </button>
+                           )}
                            <button 
                              onClick={() => setViewStudent(student)}
                              aria-label="View Student" 

@@ -101,6 +101,15 @@
         ]
       },
       {
+        "source": "/schedules",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
         "source": "/login",
         "headers": [
           {

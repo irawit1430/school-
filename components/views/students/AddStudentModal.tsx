@@ -104,11 +104,11 @@ export function AddStudentModal({
               Guardian Phone
             </label>
             <input 
-              type="tel" pattern="[0-9]{10}" title="Must be 10 digits"
+              type="tel" pattern="[0-9]{10}" title="Must be 10 digits" maxLength={10}
               value={formData.guardianPhone || ''}
-              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value})}
+              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value.replace(/\D/g, '')})}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. +91 9876543210"
+              placeholder="e.g. 9876543210"
             />
           </div>
           

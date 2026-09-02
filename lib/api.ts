@@ -453,6 +453,26 @@ export const fetchQrCards = async (studentIds: string[]) => {
   }>>(`/schools/${schoolId}/qr-cards`, { method: 'POST', body: { studentIds } });
 };
 
+// ─── Runs (recurring schedules) ────────────────────────────
+// A Run is a recurring service on a route: a direction, a wall-clock departure and a
+// weekday pattern. An overnight materialiser turns runs into the Trip rows that already
+// exist, so Trip keeps its exact meaning and gains a nullable runId.
+//
+// `departure` is wall clock ('07:15'), and startDate/endDate are plain YYYY-MM-DD.
+// Never send ISO timestamps here — the server resolves them against the school's day.
+export const fetchRuns = (routeId: string) =>
+  api<any[]>(`/routes/${routeId}/runs`);
+
+export const createRun = (routeId: string, body: any) =>
+  api(`/routes/${routeId}/runs`, { method: 'POST', body });
+
+export const updateRun = (runId: string, body: any) =>
+  api(`/runs/${runId}`, { method: 'PUT', body });
+
+// Soft delete — the row stays with active:false and is still returned by fetchRuns.
+export const deleteRun = (runId: string) =>
+  api(`/runs/${runId}`, { method: 'DELETE' });
+
 // ─── Search ────────────────────────────────────────────────
 export const searchGlobal = (query: string) =>
   api(`/search?q=${encodeURIComponent(query)}`);
