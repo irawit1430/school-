@@ -166,7 +166,7 @@ export const clearSchoolIdCache = () => {
   schoolIdInFlight = null;
 };
 
-const getSchoolId = async (): Promise<string | null> => {
+export const getSchoolId = async (): Promise<string | null> => {
   const user = getUser();
   if (!user) return null;
 
@@ -472,6 +472,51 @@ export const updateRun = (runId: string, body: any) =>
 // Soft delete — the row stays with active:false and is still returned by fetchRuns.
 export const deleteRun = (runId: string) =>
   api(`/runs/${runId}`, { method: 'DELETE' });
+
+// ─── Exceptions (per-run, per-date overrides) ──────────────
+// Dates plural, applied in one transaction: an exam week is one call, not five, and a
+// partial failure can't leave some days shifted and some not.
+// The response carries appliedToExistingTrips — the dates close enough to have already
+// materialised, which the server edited immediately rather than at the next pass.
+export const fetchExceptions = (runId: string) =>
+  api<any[]>(`/runs/${runId}/exceptions`);
+
+export const createExceptions = (
+  runId: string,
+  body: { dates: string[]; type: 'ADDED' | 'REMOVED'; departure?: string; reason?: string },
+) => api<{ appliedToExistingTrips?: string[] }>(`/runs/${runId}/exceptions`, { method: 'POST', body });
+
+export const deleteException = (id: string) =>
+  api(`/exceptions/${id}`, { method: 'DELETE' });
+
+// What the next fortnight actually materialises, platform closures already subtracted.
+// Every non-running date carries a reason string — render it, never re-derive it.
+export const fetchSchedulePreview = (routeId: string, days = 14, from?: string) =>
+  api<any[]>(`/routes/${routeId}/schedule-preview?days=${days}${from ? `&from=${from}` : ''}`);
+
+// ─── School closure calendar ───────────────────────────────
+// Rows carry no "platform" flag: a platform closure is schoolId === null, and only a
+// super-admin may touch one. See isPlatformClosure in lib/runs.ts.
+export const fetchClosures = () => api<any[]>('/calendar');
+
+export interface ClosureImpact {
+  date: string;
+  runCount?: number;
+  tripCount?: number;
+  tripsCancelled?: number;
+  applied?: boolean;
+}
+
+// One date per request — the server has no endDate and deliberately no bulk write, so a
+// holiday week is a loop. Each date can 409 on its own, which is worth knowing per date.
+// dryRun answers "what does this cancel?" before the row exists rather than after.
+export const createClosure = (
+  body: { scope: 'SCHOOL' | 'PLATFORM'; schoolId?: string; date: string; reason: string },
+  dryRun = false,
+) => api<ClosureImpact>(`/calendar${dryRun ? '?dryRun=1' : ''}`, { method: 'POST', body });
+
+export const deleteClosure = (id: string) =>
+  api<{ success: boolean; tripsRestored?: number }>(`/calendar/${id}`, { method: 'DELETE' });
 
 // ─── Search ────────────────────────────────────────────────
 export const searchGlobal = (query: string) =>

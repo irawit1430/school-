@@ -9,7 +9,8 @@ import {
   DAY_KEYS, DAY_LABELS, DIRECTION_LABELS, describeDays, validateRun, toRunPayload,
   type RunDraft, type Direction,
 } from '@/lib/runs';
-import { Plus, Clock, AlertTriangle, Trash2, Edit2, X, CalendarDays, ArrowRight, ArrowLeft } from 'lucide-react';
+import { RunOverrides } from '@/components/views/RunOverrides';
+import { Plus, Clock, AlertTriangle, Trash2, Edit2, X, CalendarDays, ArrowRight, ArrowLeft, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -35,6 +36,7 @@ export function Schedules() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [problems, setProblems] = useState<string[]>([]);
+  const [openRunId, setOpenRunId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([fetchRoutes({ summary: true }), fetchBuses(), fetchDrivers()])
@@ -58,7 +60,7 @@ export function Schedules() {
       .finally(() => setLoadingRuns(false));
   };
 
-  useEffect(() => { loadRuns(routeId); }, [routeId]);
+  useEffect(() => { setOpenRunId(null); loadRuns(routeId); }, [routeId]);
 
   // Soft-deleted runs are still returned so a recreation can't collide with something
   // invisible. The admin doesn't need to see them.
@@ -190,7 +192,8 @@ export function Schedules() {
         ) : (
           <ul className="divide-y divide-slate-100">
             {visibleRuns.map(run => (
-              <li key={run.id} className="px-4 py-3 flex items-center gap-4 flex-wrap hover:bg-slate-50/50 transition-colors">
+              <li key={run.id}>
+                <div className="px-4 py-3 flex items-center gap-4 flex-wrap hover:bg-slate-50/50 transition-colors">
                 <div className={clsx(
                   "p-2 rounded-lg shrink-0",
                   run.direction === 'TO_SCHOOL' ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"
@@ -220,6 +223,14 @@ export function Schedules() {
 
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={() => setOpenRunId(id => (id === run.id ? null : run.id))}
+                    aria-expanded={openRunId === run.id}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-orange-700 hover:bg-orange-50 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    Exam days & closures
+                    <ChevronDown size={13} className={clsx('transition-transform', openRunId === run.id && 'rotate-180')} />
+                  </button>
+                  <button
                     onClick={() => openEdit(run)}
                     className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
                     aria-label={`Edit ${run.name}`}
@@ -234,6 +245,8 @@ export function Schedules() {
                     <Trash2 size={15} />
                   </button>
                 </div>
+                </div>
+                {openRunId === run.id && <RunOverrides run={run} routeId={routeId} />}
               </li>
             ))}
           </ul>

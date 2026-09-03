@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { describeDays, validateRun, selectedDays, toRunPayload } from '../lib/runs';
+import { describeDays, validateRun, selectedDays, toRunPayload, previewDatesFor, describeClosureImpact, datesBetween, isPlatformClosure } from '../lib/runs';
 
 const base = {
   name: 'Morning A', direction: 'TO_SCHOOL' as const, departure: '07:15',
@@ -62,4 +62,58 @@ test('the payload carries only what the API accepts', () => {
 
 test('selectedDays keeps calendar order regardless of how they were set', () => {
   expect(selectedDays({ fri: true, mon: true, wed: true })).toEqual(['mon', 'wed', 'fri']);
+});
+
+test('previewDatesFor reads flat and grouped payloads, and never mixes runs', () => {
+  const flat = [
+    { runId: 'a', date: '2026-09-03', status: 'RUNNING' },
+    { runId: 'b', date: '2026-09-03', status: 'OFF_PATTERN' },
+  ];
+  expect(previewDatesFor(flat, 'a').map(d => d.status)).toEqual(['RUNNING']);
+
+  const grouped = [
+    { runId: 'a', dates: [{ date: '2026-09-03', status: 'RUNNING' }] },
+    { runId: 'b', dates: [{ date: '2026-09-03', status: 'OFF_PATTERN' }] },
+  ];
+  expect(previewDatesFor(grouped, 'b').map(d => d.status)).toEqual(['OFF_PATTERN']);
+
+  // A payload with no run identity at all belongs to the run that was asked for.
+  expect(previewDatesFor([{ date: '2026-09-03', status: 'RUNNING' }], 'a')).toHaveLength(1);
+  expect(previewDatesFor(null, 'a')).toEqual([]);
+});
+
+test('a future holiday with no trips yet does not read as "no impact"', () => {
+  // The trap: tripCount is 0 because nothing has materialised, not because nothing runs.
+  const future = describeClosureImpact({ runCount: 3, tripCount: 0 });
+  expect(future).toContain('3 schedules will not operate');
+  expect(future).toContain('will not be created');
+
+  expect(describeClosureImpact({ runCount: 1, tripCount: 2 }))
+    .toBe('1 schedule will not operate. 2 trips have already been created and will be cancelled now.');
+
+  // Genuinely nothing scheduled — the only case that may say nothing changes.
+  expect(describeClosureImpact({ runCount: 0, tripCount: 0 }))
+    .toBe('No schedules operate on these dates, so nothing changes.');
+  expect(describeClosureImpact(null)).toContain('nothing changes');
+});
+
+test('a closure range expands to one date per day, DST included', () => {
+  expect(datesBetween('2026-10-19', '2026-10-23'))
+    .toEqual(['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23']);
+
+  // Single day, and a backwards range is not a silent 365-day loop.
+  expect(datesBetween('2026-10-19', '2026-10-19')).toEqual(['2026-10-19']);
+  expect(datesBetween('2026-10-23', '2026-10-19')).toEqual([]);
+
+  // Across a DST boundary in most northern-hemisphere zones: no repeated or skipped day.
+  const week = datesBetween('2026-10-30', '2026-11-03');
+  expect(week).toEqual(['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03']);
+  expect(new Set(week).size).toBe(week.length);
+
+  expect(datesBetween('2026-01-01', '2027-01-01').length).toBe(62);
+});
+
+test('a platform closure is the one with no school on it', () => {
+  expect(isPlatformClosure({ schoolId: null })).toBe(true);
+  expect(isPlatformClosure({ schoolId: 'school-1' })).toBe(false);
 });

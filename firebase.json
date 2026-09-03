@@ -110,6 +110,15 @@
         ]
       },
       {
+        "source": "/calendar",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      },
+      {
         "source": "/login",
         "headers": [
           {
