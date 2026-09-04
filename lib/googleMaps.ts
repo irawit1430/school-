@@ -36,7 +36,24 @@ export function loadGoogleMaps(): Promise<typeof google.maps> {
     el.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&loading=async&v=weekly`;
     el.async = true;
     el.onerror = () => reject(new Error('Google Maps failed to load.'));
-    el.onload = () => (window.google?.maps ? resolve(window.google.maps) : reject(new Error('Google Maps loaded but is unavailable.')));
+
+    // The script tag alone is not enough. Under loading=async the namespace starts almost
+    // empty and each class arrives via importLibrary — reading google.maps.Map straight
+    // after onload throws "Map is not a constructor". These two calls also populate
+    // google.maps.*, so callers can keep using the namespace directly.
+    el.onload = async () => {
+      const maps = window.google?.maps as any;
+      if (!maps) return reject(new Error('Google Maps loaded but is unavailable.'));
+      try {
+        if (typeof maps.importLibrary === 'function') {
+          await Promise.all([maps.importLibrary('maps'), maps.importLibrary('geocoding')]);
+        }
+        if (!maps.Map) throw new Error('Google Maps loaded without its map library.');
+        resolve(window.google.maps);
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Google Maps failed to initialise.'));
+      }
+    };
     document.head.appendChild(el);
   });
 
