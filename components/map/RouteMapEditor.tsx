@@ -1,9 +1,8 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import GoogleRouteMap from './GoogleRouteMap';
 import { fetchOsrmRoute, reverseGeocode, searchLocation, Stop } from '@/lib/osrm';
+import { hasMapsKey, geocodeLatLng, geocodeAddress } from '@/lib/googleMaps';
 import { createRoute, updateRoute, connectSocket, createTrip, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
 import toast from 'react-hot-toast';
@@ -78,28 +77,6 @@ async function syncRouteStops(
   }
 }
 
-// Fix Leaflet default icon in bundlers
-if (typeof window !== 'undefined') {
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    // Served from our own origin, not unpkg — a school's network may filter it, and
-    // stop markers are the whole point of this editor.
-    iconRetinaUrl: '/leaflet/marker-icon-2x.png',
-    iconUrl: '/leaflet/marker-icon.png',
-    shadowUrl: '/leaflet/marker-shadow.png',
-  });
-}
-
-// Live Bus Icon
-const busIcon = typeof window !== 'undefined' ? L.divIcon({
-  html: `<div style="background-color: #ea580c; color: white; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 999;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-         </div>`,
-  className: '',
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-}) : null;
-
 function SortableStopItem({ stop, index, onRemove, onRename, disabled }: any) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: stop.uid });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -130,21 +107,6 @@ function SortableStopItem({ stop, index, onRemove, onRename, disabled }: any) {
       >×</button>
     </li>
   );
-}
-
-function ClickToAdd({ onAdd, disabled }: { onAdd: (lat: number, lng: number) => void; disabled?: boolean }) {
-  useMapEvents({ click(e) { if (!disabled) onAdd(e.latlng.lat, e.latlng.lng); } });
-  return null;
-}
-
-function MapController({ centerPos }: { centerPos: [number, number] | null }) {
-  const map = useMap();
-  useEffect(() => {
-    if (centerPos) {
-      map.flyTo(centerPos, 15, { animate: true, duration: 1 });
-    }
-  }, [centerPos, map]);
-  return null;
 }
 
 export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers, onSaved, onCancel }:
@@ -301,14 +263,18 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     setStops(prev => [...prev, { uid, lat, lng, name: `Stop ${prev.length + 1}` }]);
     setLastAddedPos([lat, lng]);
 
-    // Respect Nominatim's ~1 req/sec policy: skip enrichment on rapid clicks.
-    // (A custom User-Agent can't be set from the browser, so throttling is the
-    // only lever we have here.)
-    const now = Date.now();
-    if (now - lastGeocodeRef.current < 1100) return;
-    lastGeocodeRef.current = now;
+    // Nominatim allows ~1 req/sec, so clicking out five stops quickly used to leave four
+    // of them called "Stop 3". Google has no such limit at this volume — the throttle only
+    // applies when we are falling back to Nominatim.
+    if (!hasMapsKey) {
+      const now = Date.now();
+      if (now - lastGeocodeRef.current < 1100) return;
+      lastGeocodeRef.current = now;
+    }
 
-    const address = await reverseGeocode(lat, lng);
+    const address = hasMapsKey
+      ? await geocodeLatLng(lat, lng)
+      : await reverseGeocode(lat, lng);
     if (address) {
       setStops(prev => prev.map(s =>
         s.uid === uid ? { ...s, name: address.split(',')[0], address } : s
@@ -324,7 +290,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const results = await searchLocation(searchQuery);
+      const results = hasMapsKey ? await geocodeAddress(searchQuery) : await searchLocation(searchQuery);
       setSearchResults(results);
       if (results.length === 0) toast('No locations found', { icon: '🔍' });
     } catch (e) {
@@ -585,37 +551,17 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
 
         {/* RIGHT PANEL: Map */}
         <div className="md:col-span-2 rounded-xl border border-slate-200 overflow-hidden relative h-[400px] md:h-[600px]">
-          <MapContainer
-            center={lastAddedPos || [CONFIG.MAP_CENTER.lat, CONFIG.MAP_CENTER.lng]}
-            zoom={13}
-            className="w-full h-full z-0"
-          >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <ClickToAdd onAdd={handleAdd} disabled={saving} />
-            <MapController centerPos={lastAddedPos} />
-
-            {stops.map((stop) => (
-              <Marker
-                key={stop.uid}
-                position={[stop.lat, stop.lng]}
-                draggable={!saving}
-                eventHandlers={{
-                  dragend: (e) => {
-                    const pos = (e.target as L.Marker).getLatLng();
-                    handleMarkerDragEnd(stop.uid!, pos.lat, pos.lng);
-                  },
-                }}
-              />
-            ))}
-
-            {osrm?.latLngs && (
-              <Polyline positions={osrm.latLngs} color="#ea580c" weight={4} opacity={0.8} />
-            )}
-
-            {liveBusPosition && busIcon && (
-              <Marker position={liveBusPosition} icon={busIcon!} zIndexOffset={1000} />
-            )}
-          </MapContainer>
+          <GoogleRouteMap
+            stops={stops}
+            path={osrm?.latLngs ?? null}
+            liveBusPosition={liveBusPosition}
+            centerPos={lastAddedPos}
+            defaultCenter={[CONFIG.MAP_CENTER.lat, CONFIG.MAP_CENTER.lng]}
+            defaultZoom={13}
+            disabled={saving}
+            onAdd={handleAdd}
+            onDragEnd={handleMarkerDragEnd}
+          />
 
           <div className="absolute top-4 right-4 z-[400] bg-white px-3 py-2 rounded-lg shadow-md border border-slate-200 text-xs font-semibold text-slate-700 pointer-events-none">
             Click map to add • drag pins to adjust

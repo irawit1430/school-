@@ -578,6 +578,11 @@ export function ManageRoutes() {
         </div>
       )}
 
+      {/* ponytail: the editor unmounts on close, so Google bills a fresh map load each
+          time it is opened (~$7 per 1,000). Keeping it mounted would need the editor's
+          route-seeded state reworked, since it currently resets by remounting — not worth
+          600 lines of risk for a few dollars a term. Revisit if map loads ever show up on
+          the bill. */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl overflow-hidden p-6 max-h-[90vh] overflow-y-auto">
