@@ -19,8 +19,17 @@ export function subscribeToBusPositions(
 ): () => void {
   const pending = new Map<string, any>();
 
+  // A marker frozen on its initial REST position looks identical whether no telemetry is
+  // arriving at all or telemetry is arriving for an id that matches no bus on screen.
+  // These two lines tell those apart from the console without a debugger.
+  let announced = false;
+
   const onUpdate = (data: any) => {
     const id = data?.busId || data?.id;
+    if (!announced) {
+      announced = true;
+      console.info('[telemetry] first location_update received', { busId: id, keys: Object.keys(data ?? {}) });
+    }
     if (id) pending.set(id, data);
   };
   socket.on('location_update', onUpdate);
@@ -56,6 +65,9 @@ export function mergeBusPosition(bus: any, data: any): any {
 
   return {
     ...bus,
+    // Decided here because this is where the previous value is. The marker icon is keyed
+    // on it, so a bare threshold would rebuild the icon whenever a bus sat on the limit.
+    speeding: isSpeeding(Boolean(bus.speeding), speed),
     capacity: data.capacity || bus.capacity,
     driverName: data.driverName || bus.driverName,
     routeName: data.routeName || bus.routeName,
@@ -63,3 +75,17 @@ export function mergeBusPosition(bus: any, data: any): any {
     gpsLogs: [{ lat, lng, speed, timestamp: data.timestamp || new Date().toISOString() }],
   };
 }
+
+/**
+ * Is this bus speeding, given what it was a moment ago?
+ *
+ * A bare `speed > 60` flips on every packet for a bus sitting on the limit, and the
+ * marker's icon is keyed on it — so the DOM element is rebuilt mid-move and the position
+ * transition restarts from scratch, which reads as a flicker. The gap between the two
+ * thresholds means a bus has to actually change behaviour to change appearance.
+ */
+export const ALERT_ENTER_KMH = 65;
+export const ALERT_EXIT_KMH = 55;
+
+export const isSpeeding = (wasSpeeding: boolean, speed: number): boolean =>
+  wasSpeeding ? speed > ALERT_EXIT_KMH : speed > ALERT_ENTER_KMH;

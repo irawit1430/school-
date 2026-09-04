@@ -45,11 +45,27 @@ export function LiveFleetMap() {
 
 
     // Batched, not per-packet: one state update a second regardless of fleet size.
+    let warnedUnmatched = false;
     const stopPositions = subscribeToBusPositions(socket, batch => {
-      setBuses(prev => prev.map(b => {
-        const data = batch.get(b.id);
-        return data ? mergeBusPosition(b, data) : b;
-      }));
+      setBuses(prev => {
+        // Telemetry is keyed by the id the server calls busId; the markers are keyed by
+        // the bus id from REST. If those ever diverge every lookup misses silently and
+        // the markers sit exactly where the initial fetch put them.
+        if (!warnedUnmatched) {
+          const known = new Set(prev.map(b => b.id));
+          const unmatched = [...batch.keys()].filter(id => !known.has(id));
+          if (unmatched.length > 0) {
+            warnedUnmatched = true;
+            console.warn('[telemetry] updates for buses not on screen — markers will not move', {
+              unmatched, knownBusIds: [...known],
+            });
+          }
+        }
+        return prev.map(b => {
+          const data = batch.get(b.id);
+          return data ? mergeBusPosition(b, data) : b;
+        });
+      });
     });
 
     // Identity changes only when a trip starts or ends — a few times a day — so a slow

@@ -152,7 +152,9 @@ export default function RealMap({
 
   const getCustomIcon = (bus: any, isSelected: boolean) => {
     const speed = bus.gpsLogs?.[0]?.speed || 0;
-    const isAlert = speed > 60;
+    // Carried on the bus row by mergeBusPosition, which is where the previous value
+    // lives. Deciding it here would mean mutating a ref during render.
+    const isAlert = Boolean(bus.speeding);
     const isDelayed = bus.status === 'delayed';
 
     const cacheKey = `${bus.id}-${isSelected}-${isAlert}-${isDelayed}`;
