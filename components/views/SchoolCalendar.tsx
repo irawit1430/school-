@@ -114,7 +114,7 @@ export function SchoolCalendar() {
       const n = res?.tripsRestored ?? 0;
       toast.success(n > 0
         ? `Closure removed. ${n} ${n === 1 ? 'trip was' : 'trips were'} restored.`
-        : 'Closure removed. Trips will be created at the next generation.');
+        : 'Closure removed. Upcoming trips will be created automatically.');
       load();
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Failed to remove the closure.'));

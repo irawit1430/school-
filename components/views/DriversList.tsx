@@ -144,7 +144,7 @@ export function DriversList() {
       toast.success('Trip cancelled');
     } catch (err) {
       console.error('Failed to unassign trip', err);
-      toast.error(apiErrorMessage(err, 'Failed to unassign trip.'));
+      toast.error(apiErrorMessage(err, 'Failed to cancel trip.'));
     }
   };
   
@@ -254,7 +254,7 @@ export function DriversList() {
                           onClick={() => handleUnassignTrip(currentTrip)}
                           className="text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
                         >
-                          Unassign Trip
+                          Cancel Trip
                         </button>
                       ) : (
                         <button 

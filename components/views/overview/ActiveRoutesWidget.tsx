@@ -8,7 +8,7 @@ export function ActiveRoutesWidget({ activeTripsList }: { activeTripsList: any[]
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 md:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-4 sm:mb-5 lg:mb-6">
-        <h3 className="text-sm sm:text-base md:text-lg font-bold text-slate-800">Active Routes</h3>
+        <h3 className="text-sm sm:text-base md:text-lg font-bold text-slate-800">Trips in Progress</h3>
         <span className="text-[10px] sm:text-xs uppercase tracking-wider font-bold text-slate-500">{activeTripsList.length} Live</span>
       </div>
       

@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { EditTripModal } from '@/components/views/routes/EditTripModal';
+import { getBusDisplayName } from '@/lib/buses';
 
 const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
 
@@ -356,7 +357,7 @@ export function ManageRoutes() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-slate-900 text-xs">{assignedBus?.registrationNumber || route.bus?.name || 'Unassigned'}</p>
+                    <p className="font-semibold text-slate-900 text-xs">{assignedBus ? getBusDisplayName(assignedBus) : route.bus?.name || 'No bus assigned'}</p>
                     <p className="text-[10px] text-slate-500">{assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver'}</p>
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-700 text-xs">{stopsCount} Stops</td>
@@ -367,7 +368,7 @@ export function ManageRoutes() {
                       (TRIP_TONES[statusStr] || FALLBACK_TONE).badge
                     )}>
                       <div className={clsx("w-1.5 h-1.5 rounded-full", (TRIP_TONES[statusStr] || FALLBACK_TONE).dot)}></div>
-                      {statusStr === 'INACTIVE' ? 'No Trip' : statusStr.replace('_', ' ')}
+                      {statusStr === 'INACTIVE' ? 'No trip scheduled' : statusStr.replace('_', ' ')}
                     </span>
                   </td>
                   <td className="px-4 py-3">

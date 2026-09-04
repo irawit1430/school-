@@ -35,12 +35,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   const menuItems = [
     { href: '/overview', label: 'Overview', icon: Bus },
-    { href: '/map', label: 'Live Fleet Map', icon: Map },
-    { href: '/buses', label: 'Manage Buses', icon: Bus },
+    { href: '/map', label: 'Live Bus Tracking', icon: Map },
+    { href: '/buses', label: 'Buses', icon: Bus },
     { href: '/drivers', label: 'Drivers', icon: Users },
-    { href: '/routes', label: 'Manage Routes', icon: Route },
+    { href: '/routes', label: 'Routes & Stops', icon: Route },
     { href: '/schedules', label: 'Schedules', icon: CalendarClock },
-    { href: '/calendar', label: 'School Calendar', icon: CalendarOff },
+    { href: '/calendar', label: 'School Holidays', icon: CalendarOff },
     { href: '/students', label: 'Students & Attendance', icon: Users },
     { href: '/cards', label: 'QR Cards', icon: QrCode },
     { href: '/leaves', label: 'Leave Requests', icon: CalendarDays },

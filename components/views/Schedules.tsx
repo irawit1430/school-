@@ -93,10 +93,10 @@ export function Schedules() {
       const payload = toRunPayload(draft);
       if (editingId) {
         await updateRun(editingId, payload);
-        toast.success('Schedule updated. Changes apply from the next materialisation.');
+        toast.success('Schedule updated. Upcoming trips will be created automatically.');
       } else {
         await createRun(routeId, payload);
-        toast.success('Schedule created. Trips appear at the next materialisation.');
+        toast.success('Schedule created. Upcoming trips will be created automatically.');
       }
       setDraft(null);
       loadRuns(routeId);
@@ -383,8 +383,8 @@ export function Schedules() {
               </div>
 
               <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg p-3">
-                Trips are generated a few days ahead, so a new or edited schedule takes effect at the
-                next generation rather than immediately. Trips already created are not rewritten.
+                Upcoming trips are created automatically a few days ahead. New schedule changes apply
+                to trips created after this update; existing trips will not change.
               </p>
 
               <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">

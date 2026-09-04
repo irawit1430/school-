@@ -107,12 +107,12 @@ export function StudentsAttendance() {
         studentId: assignStudent.id,
         routeStopId: assignFormData.routeStopId
       });
-      toast.success('Bus assigned successfully!');
+      toast.success('Pickup route and stop saved.');
       setIsAssignModalOpen(false);
       loadData();
     } catch (err) {
       console.error('Failed to assign student', err);
-      toast.error(apiErrorMessage(err, 'Failed to assign student.'));
+      toast.error(apiErrorMessage(err, 'Failed to save pickup route and stop.'));
     } finally {
       setIsAssignSubmitting(false);
     }
@@ -482,7 +482,7 @@ export function StudentsAttendance() {
                                onClick={() => handleOpenAssign(student)}
                                className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors mr-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
                              >
-                               Assign Bus
+                               Assign Route & Stop
                              </button>
                            )}
                            <button 

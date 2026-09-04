@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { fetchBuses, createBus, deleteBus, fetchRoutes, fetchDrivers, createTrip, apiErrorMessage } from '@/lib/api';
 import { Bus, Plus, Trash2, X, Route as RouteIcon } from 'lucide-react';
+import { getBusDisplayName, getBusOperationalStatus, getBusRegistration } from '@/lib/buses';
 import toast from 'react-hot-toast';
 
 export function BusesList() {
@@ -69,10 +70,11 @@ export function BusesList() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this bus?')) return;
+  const handleDelete = async (bus: any) => {
+    const busName = getBusDisplayName(bus);
+    if (!confirm(`Delete ${busName}?\n\nThis permanently removes the bus from your fleet.`)) return;
     try {
-      await deleteBus(id);
+      await deleteBus(bus.id);
       toast.success('Bus deleted');
       loadData();
     } catch (err: any) {
@@ -95,11 +97,11 @@ export function BusesList() {
         busId: assignFormData.busId,
         driverId: assignFormData.driverId
       });
-      toast.success('Route assigned successfully');
+      toast.success('Trip created successfully');
       setIsAssignModalOpen(false);
       loadData();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to assign route');
+      toast.error(err.message || 'Failed to create trip');
     } finally {
       setIsAssignSubmitting(false);
     }
@@ -109,8 +111,8 @@ export function BusesList() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-end mb-6">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Manage Buses</h2>
-          <p className="text-sm text-slate-500">Add or remove fleet vehicles</p>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Buses</h2>
+          <p className="text-sm text-slate-500 mt-1">View your school buses and create trips</p>
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
@@ -125,7 +127,7 @@ export function BusesList() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold">
-                <th className="px-6 py-4">Registration No.</th>
+                <th className="px-6 py-4">Bus</th>
                 <th className="px-6 py-4">Capacity</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
@@ -141,44 +143,61 @@ export function BusesList() {
                   <td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">No buses found. Add one to get started.</td>
                 </tr>
               ) : (
-                buses.map((bus) => (
-                  <tr key={bus.id} className="hover:bg-slate-50 transition-colors group">
+                buses.map((bus) => {
+                  const displayName = getBusDisplayName(bus);
+                  const registration = getBusRegistration(bus);
+                  const operationalStatus = getBusOperationalStatus(bus);
+                  const statusTone = {
+                    success: 'bg-emerald-100 text-emerald-700',
+                    warning: 'bg-amber-100 text-amber-700',
+                    danger: 'bg-red-100 text-red-700',
+                    neutral: 'bg-slate-100 text-slate-600',
+                  }[operationalStatus.tone];
+
+                  return <tr key={bus.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
                           <Bus size={16} />
                         </div>
-                        <div className="font-semibold text-slate-900">{bus.registrationNumber}</div>
+                        <div>
+                          <div className="font-semibold text-slate-900">{displayName}</div>
+                          {registration && registration !== displayName && (
+                            <div className="text-xs text-slate-500 mt-0.5">{registration}</div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 text-slate-600">
                       {bus.capacity} seats
                     </td>
                     <td className="px-6 py-4">
-                      <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold uppercase">
-                        Active
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${statusTone}`}>
+                        {operationalStatus.label}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                       <button 
                         onClick={() => handleOpenAssign(bus)}
-                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        title="Assign Route"
-                        aria-label="Assign Route"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        title="Create Trip"
+                        aria-label={`Create trip for ${displayName}`}
                       >
                         <RouteIcon size={16} />
+                        Create trip
                       </button>
                       <button 
-                        onClick={() => handleDelete(bus.id)}
-                        className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+                        onClick={() => handleDelete(bus)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
                         title="Delete Bus"
                         aria-label="Delete Bus"
                       >
                         <Trash2 size={16} />
+                        Delete
                       </button>
                     </td>
-                  </tr>
-                ))
+                  </tr>;
+                })
               )}
             </tbody>
           </table>
@@ -250,7 +269,7 @@ export function BusesList() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">Assign Route to Bus</h3>
+              <h3 className="font-bold text-slate-900 text-lg">Create Trip</h3>
               <button 
                 onClick={() => setIsAssignModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600 transition-colors p-1"
@@ -260,7 +279,7 @@ export function BusesList() {
             </div>
             <form onSubmit={handleAssignSubmit} className="p-6 space-y-4">
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-2">
-                <p className="text-xs text-slate-500 font-medium">Selected Bus</p>
+                <p className="text-xs text-slate-500 font-medium">Bus for this trip</p>
                 <p className="text-sm font-bold text-slate-900">{assignBusName}</p>
               </div>
               <div>
@@ -312,7 +331,7 @@ export function BusesList() {
                   disabled={isAssignSubmitting}
                   className="px-4 py-2 rounded-lg font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition-colors text-sm disabled:opacity-70 disabled:cursor-not-allowed flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  {isAssignSubmitting ? 'Assigning...' : 'Assign Route'}
+                  {isAssignSubmitting ? 'Creating trip...' : 'Create Trip'}
                 </button>
               </div>
             </form>

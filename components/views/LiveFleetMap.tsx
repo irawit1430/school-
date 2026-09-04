@@ -4,6 +4,7 @@ import { Bell, Settings, Filter, Layers, Bus, X, PhoneCall, Focus, MessageSquare
 import { clsx } from 'clsx';
 import { fetchBuses, fetchDrivers, fetchDeviceLocations, connectSocket } from '@/lib/api';
 import { isActiveTrip } from '@/lib/trips';
+import { getBusDisplayName } from '@/lib/buses';
 import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
 import DynamicMap from '@/components/map/DynamicMap';
 import toast from 'react-hot-toast';
@@ -209,7 +210,7 @@ export function LiveFleetMap() {
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Route</span>
                 <span className="font-semibold text-slate-200">
-                  {selectedBus.routeName || 'Off-Route'}
+                  {selectedBus.routeName || 'No active trip'}
                 </span>
               </div>
               <div>
@@ -349,7 +350,7 @@ export function LiveFleetMap() {
           ) : (
             filteredBuses.map((bus) => {
               const speed = bus.gpsLogs?.[0]?.speed || 0;
-              const isAlert = speed > 60;
+              const isAlert = Boolean(bus.speeding);
               const isDelayed = bus.status === 'delayed';
               const isActive = bus.status === 'active' || speed > 0;
               const isSelected = selectedBusId === bus.id;
@@ -394,10 +395,10 @@ export function LiveFleetMap() {
                       </div>
                       <div>
                         <h4 className="font-bold text-slate-900 text-sm leading-tight group-hover:text-orange-600 transition-colors">
-                          {bus.name || bus.licensePlate || bus.registrationNumber}
+                          {getBusDisplayName(bus)}
                         </h4>
                         <p className="text-[11px] font-medium text-slate-500 flex items-center gap-1 mt-0.5">
-                          <span className="truncate max-w-[150px]">{bus.routeName || 'Off-Route'}</span>
+                          <span className="truncate max-w-[150px]">{bus.routeName || 'No active trip'}</span>
                         </p>
                       </div>
                     </div>
@@ -450,7 +451,7 @@ export function LiveFleetMap() {
                       )}
                     >
                       <Focus size={13} />
-                      {isSelected ? 'Focused (Click to unselect)' : 'Track / Focus on Map'}
+                      {isSelected ? 'Shown on map · Clear' : 'Show on Map'}
                     </button>
 
                     {/* Was a toast that said "Contacting driver…" and placed no call. During a

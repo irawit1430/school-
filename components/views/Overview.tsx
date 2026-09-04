@@ -182,14 +182,14 @@ export function Overview() {
           color="primary"
         />
         <MetricCard
-          title="Active Devices"
+          title="GPS Devices Online"
           value={stats?.activeDevices ?? '—'}
           loading={loading}
           icon={CheckCircle}
           color="success"
         />
         <MetricCard
-          title="Offline Devices"
+          title="Buses with GPS Offline"
           value={stats?.offlineDevices ?? '—'}
           loading={loading}
           icon={AlertTriangle}
@@ -199,7 +199,6 @@ export function Overview() {
           title="Pending Leaves"
           value={stats?.pendingLeaves ?? leaves.length ?? '—'}
           loading={loading}
-          subtitle="Urgent"
           icon={CalendarDays}
           color="slate"
         />

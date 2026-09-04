@@ -29,7 +29,7 @@ export function AssignBusModal({
       <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-slate-900 text-lg">
-            Assign Bus / Route
+            Assign Pickup Route &amp; Stop
           </h3>
           <button 
             onClick={onClose}
@@ -99,7 +99,7 @@ export function AssignBusModal({
               disabled={isAssignSubmitting || !assignFormData.routeStopId}
               className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
             >
-              {isAssignSubmitting ? 'Assigning...' : 'Confirm Assignment'}
+              {isAssignSubmitting ? 'Saving...' : 'Save Route & Stop'}
             </button>
           </div>
         </form>

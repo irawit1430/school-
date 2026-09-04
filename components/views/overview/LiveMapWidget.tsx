@@ -7,7 +7,7 @@ export function LiveMapWidget({ buses }: { buses: any[] }) {
     <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
       <div className="p-4 border-b border-slate-100 flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <Map size={18} className="text-orange-600" /> Live Fleet Map
+          <Map size={18} className="text-orange-600" /> Live Bus Tracking
         </h3>
         <div className="flex gap-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded">Real-time</span>
