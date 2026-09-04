@@ -9,9 +9,10 @@ import { useRouter } from 'next/navigation';
 import { API_BASE } from '@/lib/api';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
-import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';
+import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, clearApiCache, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { avatarFor } from '@/lib/avatar';
+import { AppNotification, isActiveEmergency, isEmergencyNotification, mergeNotification, normalizeNotification } from '@/lib/notifications';
 
 interface HeaderProps {
   title?: string;
@@ -24,16 +25,6 @@ interface SearchResult {
   type: string; // 'student', 'driver', 'bus', 'route'
   name: string;
   detail: string;
-}
-
-interface Notification {
-  id: string;
-  type?: string;
-  metadata?: any;
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
 }
 
 export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps) {
@@ -52,7 +43,8 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Notification state
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationError, setNotificationError] = useState(false);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const skipPollUntil = useRef<number>(0);
@@ -85,17 +77,19 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   }, []);
 
   // Fetch notifications
-  const fetchNotifications = async () => {
+  const fetchNotifications = async ({ force = false }: { force?: boolean } = {}) => {
     if (!token) return;
     // Don't overwrite optimistic state right after mark-read
-    if (Date.now() < skipPollUntil.current) return;
+    if (!force && Date.now() < skipPollUntil.current) return;
     try {
       const data = await fetchNotifs();
       if (Array.isArray(data)) {
         setNotifications(data);
+        setNotificationError(false);
       }
     } catch {
-      // Quietly handle notification polling errors
+      // A failed refresh is not an empty inbox; preserve the last known list.
+      setNotificationError(true);
     }
   };
 
@@ -106,8 +100,17 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     let socket: any = null;
     if (token) {
       socket = connectSocket();
-      socket.on('notification', (newNotif: Notification) => {
-        setNotifications(prev => [newNotif, ...prev]);
+      let hasConnected = false;
+      socket.on('connect', () => {
+        if (hasConnected) {
+          clearApiCache();
+          fetchNotifications({ force: true });
+        }
+        hasConnected = true;
+      });
+      socket.on('notification', (newNotif: unknown) => {
+        const normalized = normalizeNotification(newNotif, 'ordinary');
+        setNotifications(prev => mergeNotification(prev, normalized));
       });
     }
 
@@ -161,16 +164,11 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
 
   const markAllAsRead = async () => {
     if (!token) return;
-    const unreadAlerts = notifications.filter(n => !n.isRead && ['DRIVER_SOS', 'HARDWARE_SOS', 'DELAY'].includes(n.type || ''));
     // Optimistic update + cooldown to prevent poll from reverting
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setNotifications(prev => prev.map(n => isEmergencyNotification(n) ? n : { ...n, isRead: true }));
     skipPollUntil.current = Date.now() + 15000;
     try {
       await markAllNotificationsRead();
-      // EmergencyAlerts are in a separate table and aren't caught by the mark-read endpoint
-      if (unreadAlerts.length > 0) {
-        await Promise.allSettled(unreadAlerts.map(a => resolveAlert(a.id)));
-      }
     } catch (error) {
       console.error('Failed to mark all as read:', error);
       toast.error(apiErrorMessage(error, 'Failed to mark notifications as read.'));
@@ -184,15 +182,12 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     e.stopPropagation();
     if (!token) return;
     const notif = notifications.find(n => n.id === id);
+    if (!notif || isEmergencyNotification(notif)) return;
     // Optimistic update + cooldown
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     skipPollUntil.current = Date.now() + 15000;
     try {
-      if (notif && ['DRIVER_SOS', 'HARDWARE_SOS', 'DELAY'].includes(notif.type || '')) {
-        await resolveAlert(id);
-      } else {
-        await markNotificationRead(id);
-      }
+      await markNotificationRead(id);
     } catch (error) {
       console.error('Failed to mark as read:', error);
       toast.error('Failed to mark notification as read');
@@ -201,7 +196,25 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     }
   };
 
-  const handleResetPassword = async (notif: Notification, e: React.MouseEvent) => {
+  const handleResolveIncident = async (notif: AppNotification, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!token || !isActiveEmergency(notif)) return;
+    if (!window.confirm(`Resolve this incident?\n\n${notif.title}\n${notif.message}\n\nOnly continue if the incident has actually been handled.`)) return;
+
+    try {
+      await resolveAlert(notif.id);
+      setNotifications(prev => prev.map(item => item.id === notif.id
+        ? { ...item, status: 'RESOLVED' }
+        : item));
+      clearApiCache();
+      fetchNotifications({ force: true });
+      toast.success('Incident resolved');
+    } catch (error) {
+      toast.error(apiErrorMessage(error, 'Failed to resolve incident.'));
+    }
+  };
+
+  const handleResetPassword = async (notif: AppNotification, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!token || !notif.metadata?.userId) return;
     
@@ -219,7 +232,9 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const ordinaryUnreadCount = notifications.filter(n => !isEmergencyNotification(n) && !n.isRead).length;
+  const activeIncidentCount = notifications.filter(isActiveEmergency).length;
+  const attentionCount = ordinaryUnreadCount + activeIncidentCount;
 
   // Search results looked clickable — pointer cursor, hover state — and weren't. An
   // admin found the child they were phoned about and then had to navigate by hand.
@@ -342,11 +357,12 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
             <button 
               onClick={() => setShowNotifDropdown(!showNotifDropdown)}
               className="relative p-2 text-slate-400 hover:text-slate-600 transition-colors"
+              aria-label={`Notifications${attentionCount ? `, ${attentionCount} need attention` : ''}`}
             >
               <Bell size={18} />
-              {unreadCount > 0 && (
+              {attentionCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white border-2 border-white">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                  {attentionCount > 9 ? '9+' : attentionCount}
                 </span>
               )}
             </button>
@@ -355,7 +371,7 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
               <div className="absolute top-full mt-2 right-0 w-80 bg-white border border-slate-200 rounded-lg shadow-xl overflow-hidden z-50">
                 <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                   <h3 className="font-bold text-slate-900 text-sm">Notifications</h3>
-                  {unreadCount > 0 && (
+                  {ordinaryUnreadCount > 0 && (
                     <button 
                       onClick={markAllAsRead}
                       className="text-xs text-orange-600 font-medium hover:text-orange-700 transition-colors"
@@ -366,20 +382,31 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
                 </div>
                 
                 <div className="max-h-80 overflow-y-auto">
+                  {notificationError && (
+                    <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-100">
+                      Could not refresh notifications. Showing the last available updates.
+                    </div>
+                  )}
                   {notifications.length > 0 ? (
                     <ul className="divide-y divide-slate-100">
-                      {notifications.map((notif) => (
+                      {notifications.map((notif) => {
+                        const emergency = isEmergencyNotification(notif);
+                        const activeEmergency = isActiveEmergency(notif);
+                        return (
                         <li 
                           key={notif.id} 
                           className={clsx(
                             "px-4 py-3 hover:bg-slate-50 transition-colors relative group",
-                            !notif.isRead ? "bg-orange-50/30" : ""
+                            activeEmergency ? "bg-rose-50/40" : !notif.isRead ? "bg-orange-50/30" : ""
                           )}
                         >
-                          {!notif.isRead && (
-                            <span className="absolute left-2 top-4 w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                          {(activeEmergency || (!emergency && !notif.isRead)) && (
+                            <span className={clsx(
+                              "absolute left-2 top-4 w-1.5 h-1.5 rounded-full",
+                              activeEmergency ? "bg-rose-500" : "bg-orange-500"
+                            )}></span>
                           )}
-                          <div className={clsx("pl-2 flex justify-between gap-2", !notif.isRead ? "font-medium" : "")}>
+                          <div className={clsx("pl-2 flex justify-between gap-2", (activeEmergency || !notif.isRead) ? "font-medium" : "")}>
                             <div>
                               <div className="text-sm text-slate-900">{notif.title}</div>
                               <div className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notif.message}</div>
@@ -389,26 +416,37 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
                                 })}
                               </div>
                             </div>
-                            {!notif.isRead && (
-                              notif.type === 'PASSWORD_RESET' ? (
+                            <div className="flex flex-col items-end gap-1 self-start">
+                              {notif.type === 'PASSWORD_RESET' && !notif.isRead ? (
                                 <button 
                                   onClick={(e) => handleResetPassword(notif, e)}
-                                  className="opacity-0 group-hover:opacity-100 text-xs font-semibold text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap self-start"
+                                  className="sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-xs font-semibold text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap"
                                 >
                                   Reset Password
                                 </button>
-                              ) : (
+                              ) : !emergency && !notif.isRead ? (
                                 <button 
                                   onClick={(e) => markAsRead(notif.id, e)}
-                                  className="opacity-0 group-hover:opacity-100 text-xs text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap self-start"
+                                  className="sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-xs text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap"
                                 >
                                   Mark read
                                 </button>
-                              )
-                            )}
+                              ) : null}
+                              {activeEmergency && (
+                                <button
+                                  onClick={(e) => handleResolveIncident(notif, e)}
+                                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 whitespace-nowrap"
+                                >
+                                  Resolve incident
+                                </button>
+                              )}
+                              {emergency && !activeEmergency && (
+                                <span className="text-[10px] font-semibold text-emerald-700">Resolved</span>
+                              )}
+                            </div>
                           </div>
                         </li>
-                      ))}
+                      )})}
                     </ul>
                   ) : (
                     <div className="py-8 px-4 text-center text-slate-500 text-sm flex flex-col items-center">

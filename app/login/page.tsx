@@ -7,8 +7,8 @@ import { login } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@voltava.app');
-  const [password, setPassword] = useState('MeraStrongPass@2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [issues, setIssues] = useState<Array<{ path: string; message: string }>>([]);

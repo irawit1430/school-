@@ -2,6 +2,10 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Multiple unrelated lockfiles exist above this project on the workstation. Without
+  // an explicit root, Next.js walks into the user profile during production builds and
+  // can fail on files this app neither owns nor needs.
+  outputFileTracingRoot: process.cwd(),
   eslint: {
     ignoreDuringBuilds: true,
   },

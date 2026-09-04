@@ -8,6 +8,7 @@ import { Download, Plus, Upload, Eye, Mail, AlertTriangle, Clock, Info, Search }
 import { clsx } from 'clsx';
 import { toast } from 'react-hot-toast';
 import { SummaryCards } from './students/SummaryCards';
+import { notificationSeverity } from '@/lib/notifications';
 import { AddStudentModal } from './students/AddStudentModal';
 import { ImportStudentsModal } from './students/ImportStudentsModal';
 import { CredentialsPopup } from './students/CredentialsPopup';
@@ -562,31 +563,31 @@ export function StudentsAttendance() {
               {notifications.length > 0 ? notifications.map((alert: any) => (
                 <div key={alert.id} className={clsx(
                   "p-3 rounded-lg border flex gap-3",
-                  alert.type === 'error' ? "bg-red-50/50 border-red-100" :
-                  alert.type === 'warning' ? "bg-amber-50/50 border-amber-100" :
+                   notificationSeverity(alert.type) === 'critical' ? "bg-red-50/50 border-red-100" :
+                   notificationSeverity(alert.type) === 'warning' ? "bg-amber-50/50 border-amber-100" :
                   "bg-orange-50/50 border-orange-100"
                 )}>
                    <div className={clsx(
                      "mt-0.5",
-                     alert.type === 'error' ? "text-red-500" :
-                     alert.type === 'warning' ? "text-amber-500" :
+                     notificationSeverity(alert.type) === 'critical' ? "text-red-500" :
+                     notificationSeverity(alert.type) === 'warning' ? "text-amber-500" :
                      "text-orange-500"
                    )}>
-                     {alert.type === 'error' ? <AlertTriangle size={16} /> :
-                      alert.type === 'warning' ? <Clock size={16} /> :
+                     {notificationSeverity(alert.type) === 'critical' ? <AlertTriangle size={16} /> :
+                      notificationSeverity(alert.type) === 'warning' ? <Clock size={16} /> :
                       <Info size={16} />}
                    </div>
                    <div>
                      <p className={clsx(
                        "text-sm font-bold",
-                       alert.type === 'error' ? "text-red-900" :
-                       alert.type === 'warning' ? "text-amber-900" :
+                        notificationSeverity(alert.type) === 'critical' ? "text-red-900" :
+                        notificationSeverity(alert.type) === 'warning' ? "text-amber-900" :
                        "text-orange-900"
                      )}>{alert.title}</p>
                      <p className={clsx(
                        "text-xs font-medium mt-0.5",
-                       alert.type === 'error' ? "text-red-700" :
-                       alert.type === 'warning' ? "text-amber-700" :
+                        notificationSeverity(alert.type) === 'critical' ? "text-red-700" :
+                        notificationSeverity(alert.type) === 'warning' ? "text-amber-700" :
                        "text-orange-700"
                      )}>{alert.message || alert.desc}</p>
                    </div>

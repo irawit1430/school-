@@ -1,6 +1,7 @@
 import { CONFIG } from './config';
 import { io, Socket } from 'socket.io-client';
 import { cachedGet, clearApiCache } from './apiCache';
+import { normalizeNotification } from './notifications';
 
 export { clearApiCache };
 
@@ -400,21 +401,9 @@ export const deleteDriver = async (id: string) => {
 
 // ─── Notifications ─────────────────────────────────────────
 export const fetchNotifications = async (limit = 20) => {
-  try {
-    const res = await api(`/notifications?limit=${limit}`);
-    const list = Array.isArray(res) ? res : (res?.data || res?.notifications || []);
-    return list.map((n: any) => ({
-      ...n,
-      id: n.id || n._id || String(n.notificationId || ''),
-      isRead: typeof n.isRead === 'boolean' ? n.isRead : (typeof n.read === 'boolean' ? n.read : Boolean(n.readAt || n.status === 'READ')),
-      title: n.title || 'Notification',
-      message: n.message || n.body || n.content || '',
-      createdAt: n.createdAt || n.created_at || n.timestamp || new Date().toISOString(),
-    }));
-  } catch (err) {
-    console.error('Failed to fetch notifications:', err);
-    return [];
-  }
+  const res = await api(`/notifications?limit=${limit}`);
+  const list = Array.isArray(res) ? res : (res?.data || res?.notifications || []);
+  return list.map(normalizeNotification);
 };
 
 export const markAllNotificationsRead = async () => {
