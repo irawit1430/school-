@@ -32,28 +32,31 @@ export function loadGoogleMaps(): Promise<typeof google.maps> {
       window.dispatchEvent(new Event('gm-auth-failure'));
     };
 
-    const el = document.createElement('script');
-    el.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&loading=async&v=weekly`;
-    el.async = true;
-    el.onerror = () => reject(new Error('Google Maps failed to load.'));
-
-    // The script tag alone is not enough. Under loading=async the namespace starts almost
-    // empty and each class arrives via importLibrary — reading google.maps.Map straight
-    // after onload throws "Map is not a constructor". These two calls also populate
-    // google.maps.*, so callers can keep using the namespace directly.
-    el.onload = async () => {
-      const maps = window.google?.maps as any;
-      if (!maps) return reject(new Error('Google Maps loaded but is unavailable.'));
+    // Readiness comes from Google's own callback, not from the script's onload. Under
+    // loading=async, onload fires while google.maps is still a stub — importLibrary may
+    // not exist yet and google.maps.Map certainly does not, which is what produced both
+    // "Map is not a constructor" and "loaded without its map library". The callback fires
+    // only once the API is genuinely usable.
+    const CB = '__voltavaMapsReady';
+    (window as any)[CB] = async () => {
+      const maps = (window as any).google?.maps;
       try {
-        if (typeof maps.importLibrary === 'function') {
-          await Promise.all([maps.importLibrary('maps'), maps.importLibrary('geocoding')]);
-        }
-        if (!maps.Map) throw new Error('Google Maps loaded without its map library.');
-        resolve(window.google.maps);
+        if (!maps) throw new Error('Google Maps loaded but is unavailable.');
+        // Geocoding is a separate library; the map itself is ready by the callback.
+        if (typeof maps.importLibrary === 'function') await maps.importLibrary('geocoding');
+        if (typeof maps.Map !== 'function') throw new Error('Google Maps loaded without its map library.');
+        resolve(maps);
       } catch (err) {
         reject(err instanceof Error ? err : new Error('Google Maps failed to initialise.'));
+      } finally {
+        delete (window as any)[CB];
       }
     };
+
+    const el = document.createElement('script');
+    el.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&loading=async&v=weekly&callback=${CB}`;
+    el.async = true;
+    el.onerror = () => reject(new Error('Google Maps failed to load. Check the network connection.'));
     document.head.appendChild(el);
   });
 
@@ -61,10 +64,16 @@ export function loadGoogleMaps(): Promise<typeof google.maps> {
 }
 
 let geocoder: google.maps.Geocoder | null = null;
-const getGeocoder = async () => {
-  const maps = await loadGoogleMaps();
-  if (!geocoder) geocoder = new maps.Geocoder();
-  return geocoder;
+const getGeocoder = async (): Promise<google.maps.Geocoder> => {
+  const maps = (await loadGoogleMaps()) as any;
+  if (!geocoder) {
+    // Take the constructor from the namespace if it landed there, otherwise from the
+    // library object itself — importLibrary is documented to return it, and only
+    // documented as a side effect to populate google.maps.
+    const Ctor = maps.Geocoder ?? (await maps.importLibrary('geocoding')).Geocoder;
+    geocoder = new Ctor() as google.maps.Geocoder;
+  }
+  return geocoder!;
 };
 
 /**
