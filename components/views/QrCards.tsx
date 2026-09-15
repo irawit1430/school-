@@ -1,6 +1,5 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
-import QRCode from 'qrcode';
 import { fetchStudents, fetchQrCards, apiErrorMessage } from '@/lib/api';
 import { Printer, Search, Info, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -98,6 +97,10 @@ export function QrCards() {
         toast.error('No cards came back for that selection.');
         return;
       }
+      // Loaded here rather than at module scope: the encoder is only ever used by this
+      // handler, so the page no longer carries it just to render the student picker.
+      const { default: QRCode } = await import('qrcode');
+
       // Level Q, not M. The payload is a short hex token, so Q still lands around
       // 29-33 modules — roughly 1.3mm each at 42mm, which a phone reads comfortably at
       // arm's length. The density cost is theoretical; the damage tolerance is not,

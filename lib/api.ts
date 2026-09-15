@@ -1,5 +1,5 @@
 import { CONFIG } from './config';
-import { io, Socket } from 'socket.io-client';
+import { openSocket, closeSharedSocket, type SocketHandle } from './socket';
 import { cachedGet, clearApiCache } from './apiCache';
 import { normalizeNotification } from './notifications';
 
@@ -39,6 +39,7 @@ export const clearAuth = () => {
   }
   clearSchoolIdCache();
   clearApiCache();
+  closeSharedSocket();
 };
 
 // ─── Error class with status + validation issues ───────────
@@ -249,22 +250,23 @@ export async function updatePassword(password: string) {
 }
 
 // ─── Authenticated Socket.IO ───────────────────────────────
-export function connectSocket(): Socket {
-  const socket = io(CONFIG.SOCKET_URL, {
-    auth: { token: getToken() }, // REQUIRED — server rejects without it
-    transports: ['websocket'],
-  });
-
-  socket.on('connect_error', (err) => {
-    if (err.message?.startsWith('Unauthorized') || err.message?.includes('invalid token')) {
+/**
+ * A handle on the tab's single shared connection — see lib/socket.ts for why there is
+ * only one and why the client is loaded on demand. Call it from an effect and call
+ * `disconnect()` in the cleanup, exactly as before; that releases this caller's
+ * listeners, and the connection itself closes once the last caller has gone.
+ */
+export function connectSocket(): SocketHandle {
+  return openSocket({
+    url: CONFIG.SOCKET_URL,
+    getToken,
+    onUnauthorized: () => {
       clearAuth();
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
       }
-    }
+    },
   });
-
-  return socket;
 }
 
 // ─── Stats ─────────────────────────────────────────────────

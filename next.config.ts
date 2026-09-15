@@ -31,7 +31,6 @@ const nextConfig: NextConfig = {
     ],
   },
   output: 'export',
-  transpilePackages: ['motion'],
   // Next.js 16 uses Turbopack by default. Empty config silences webpack conflict.
   turbopack: {},
   webpack: (config, {dev}) => {

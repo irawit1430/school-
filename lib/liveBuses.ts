@@ -1,4 +1,4 @@
-import type { Socket } from 'socket.io-client';
+import type { SocketHandle } from './socket';
 
 /**
  * Batch `location_update` packets instead of setting state on each one.
@@ -13,7 +13,7 @@ import type { Socket } from 'socket.io-client';
  * where it has been.
  */
 export function subscribeToBusPositions(
-  socket: Socket,
+  socket: Pick<SocketHandle, 'on' | 'off'>,
   apply: (updates: Map<string, any>) => void,
   intervalMs = 1000,
 ): () => void {
