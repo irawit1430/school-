@@ -27,14 +27,20 @@ does not.
 ## Part 1 — What this app is
 
 This is the **School Admin Dashboard** — the website the school transport office uses to
-run their bus operation. It is one of four planned apps in the Voltava Fleet product:
+run their bus operation. It is one of four apps in the Voltava Fleet product:
 
 | App | Status |
 |---|---|
-| **School Admin (this repo)** | ✅ Built — 11 screens |
-| Super Admin | ❌ Not started |
-| Parent (mobile) | ❌ Not started |
-| Driver (mobile) | ❌ Not started |
+| **School Admin (this repo)** | ✅ Built — 11 screens, audited here |
+| Super Admin | ✅ Built — repo outside this audit's scope |
+| Parent (mobile) | ✅ Built — repo outside this audit's scope |
+| Driver (mobile) | ✅ Built — repo outside this audit's scope |
+
+> **Correction, 16 Sep 2026.** An earlier version of this table said the other three
+> apps were not started, because `docs/frontend/OVERVIEW.md` in the backend repo
+> lists their repos as **TBD**. The owner has confirmed they are built. They were not
+> inspected, so nothing here speaks to their quality — but the finding is withdrawn,
+> and that stale table should be updated.
 
 It talks to the Voltava backend over a REST API and a live Socket.IO connection.
 It has no database and no server logic of its own — it is a pure client.
