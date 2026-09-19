@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ACTIVE_TRIP_STATUSES, isActiveTrip, activeTripsSoonestFirst, describeTrip } from '../lib/trips';
+import { ACTIVE_TRIP_STATUSES, isActiveTrip, activeTripsSoonestFirst, describeTrip, nextDepartureAt, routeHasMatchingTrip } from '../lib/trips';
 
 // These guard the two defects that kept recurring across the platform: a DELAYED trip
 // being treated as not-live, and "the current trip" being whichever element the API
@@ -56,4 +56,44 @@ test('describeTrip names enough for a confirmation to be acted on', () => {
   // A half-populated trip still produces something, never "undefined".
   expect(describeTrip({})).toBe('Unknown route');
   expect(describeTrip(null)).toBe('Unknown route');
+});
+
+// ─── Route-level trip filtering (replaces the "representative trip" heuristic) ───────
+
+test('filtering by driver finds every route they are on, not just the picked trip', () => {
+  const trips = [
+    { id: 'a', status: 'COMPLETED', driverId: 'd1', busId: 'b1' },
+    { id: 'b', status: 'PLANNED',   driverId: 'd2', busId: 'b2' },
+  ];
+  // The old code tested one chosen trip, so d2 could be filtered out of their own route.
+  expect(routeHasMatchingTrip(trips, { driverId: 'd2' })).toBe(true);
+  expect(routeHasMatchingTrip(trips, { driverId: 'd1' })).toBe(true);
+  expect(routeHasMatchingTrip(trips, { driverId: 'd3' })).toBe(false);
+});
+
+test('two filters must hold on the same trip, not across different ones', () => {
+  const trips = [
+    { id: 'a', status: 'DELAYED', busId: 'b1' },
+    { id: 'b', status: 'PLANNED', busId: 'b2' },
+  ];
+  expect(routeHasMatchingTrip(trips, { busId: 'b1', status: 'DELAYED' })).toBe(true);
+  // b2 is PLANNED and b1 is DELAYED — no single trip is both.
+  expect(routeHasMatchingTrip(trips, { busId: 'b2', status: 'DELAYED' })).toBe(false);
+});
+
+test('an empty filter matches everything, including a route with no trips', () => {
+  expect(routeHasMatchingTrip([], {})).toBe(true);
+  expect(routeHasMatchingTrip(null, {})).toBe(true);
+  expect(routeHasMatchingTrip(null, { busId: 'b1' })).toBe(false);
+});
+
+test('next departure reads the soonest ACTIVE trip, including one already running', () => {
+  const running = { id: 'now', status: 'DELAYED', scheduledStart: '2026-09-20T07:15:00.000Z' };
+  const later   = { id: 'pm',  status: 'PLANNED', scheduledStart: '2026-09-20T14:30:00.000Z' };
+  const done    = { id: 'old', status: 'COMPLETED', scheduledStart: '2026-09-01T07:15:00.000Z' };
+
+  // The running trip departed in the past — it must still be what the column reports.
+  expect(nextDepartureAt([later, running, done])).toBe(Date.parse(running.scheduledStart));
+  expect(nextDepartureAt([done])).toBe(0);
+  expect(nextDepartureAt([])).toBe(0);
 });

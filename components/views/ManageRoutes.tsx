@@ -4,12 +4,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   fetchRoutes, deleteRoute, createTrip, updateTripStatus,
-  fetchBuses, fetchDrivers, fetchStats, getSchoolId, apiErrorMessage,
+  fetchBuses, fetchDrivers, getSchoolId, apiErrorMessage,
 } from '@/lib/api';
 import {
-  Clock, CheckCircle, Zap, Download, Edit3, Map, Trash2, X, Users,
+  Download, Edit3, Map, Trash2, X,
   Plus, XCircle, Search as SearchIcon,
-  SlidersHorizontal, RefreshCw, ArrowUpDown,
+  SlidersHorizontal, RefreshCw, ArrowUpDown, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Link from 'next/link';
@@ -20,7 +20,8 @@ import { EditTripModal } from '@/components/views/routes/EditTripModal';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
 import type { Direction } from '@/lib/runs';
 import { getBusDisplayName } from '@/lib/buses';
-import { activeTripsSoonestFirst, isActiveTrip, describeTrip, routeDeleteBlock, ACTIVE_TRIP_STATUSES } from '@/lib/trips';
+import { activeTripsSoonestFirst, isActiveTrip, describeTrip, routeDeleteBlock, nextDepartureAt, routeHasMatchingTrip } from '@/lib/trips';
+import { DIRECTION_LABELS } from '@/lib/runs';
 
 const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
 
@@ -70,13 +71,92 @@ function fromDatetimeLocalToISO(local: string): string {
 type SortKey = 'name' | 'stops' | 'duration' | 'departure';
 type SortDir = 'asc' | 'desc';
 
+/**
+ * One trip, rendered as itself.
+ *
+ * Every field here belongs to this trip and nothing else: the bus, the driver, the
+ * direction and the status are the trip's own, not a route's. That is the whole point of
+ * the split — the page used to hoist one trip's fields onto the route row and leave the
+ * admin to guess which trip they were looking at.
+ */
+function TripRow({ trip, bus, driver, busy, muted, onEdit, onCancel }: {
+  trip: any; bus?: any; driver?: any; busy?: boolean; muted?: boolean;
+  onEdit?: () => void; onCancel?: () => void;
+}) {
+  const tone = TRIP_TONES[trip.status] || FALLBACK_TONE;
+  const direction = trip.direction as Direction | null | undefined;
+
+  return (
+    <div className={clsx(
+      'flex items-center justify-between gap-3 rounded border bg-white px-3 py-2',
+      muted ? 'border-slate-100 opacity-75' : 'border-slate-200',
+    )}>
+      <div className="flex items-center gap-3 min-w-0 flex-wrap">
+        <span className={clsx('px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5', tone.badge)}>
+          <span className={clsx('w-1.5 h-1.5 rounded-full', tone.dot)} />
+          {busy ? 'Cancelling…' : (trip.status?.replace('_', ' ') ?? 'UNKNOWN')}
+        </span>
+
+        {/* Direction is required to create a trip, so it is shown wherever a trip is.
+            Legacy trips predate the field and read null — say so rather than guessing. */}
+        {direction ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600">
+            {direction === 'TO_SCHOOL' ? <ArrowRight size={12} /> : <ArrowLeft size={12} />}
+            {DIRECTION_LABELS[direction]}
+          </span>
+        ) : (
+          <span className="text-[11px] font-semibold text-amber-600">Direction not set</span>
+        )}
+
+        <span className="font-mono text-[11px] text-slate-500">
+          {trip.scheduledStart
+            ? new Date(trip.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : 'No scheduled time'}
+        </span>
+
+        <span className="text-[11px] text-slate-500 truncate">
+          {bus ? getBusDisplayName(bus) : 'No bus'}
+          {' · '}
+          {driver?.name ?? 'No driver'}
+        </span>
+      </div>
+
+      {(onEdit || onCancel) && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              disabled={busy}
+              className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              title="Edit this trip"
+              aria-label="Edit this trip"
+            >
+              <Edit3 size={13} />
+            </button>
+          )}
+          {onCancel && (
+            <button
+              onClick={onCancel}
+              disabled={busy}
+              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+              title="Cancel this trip"
+              aria-label="Cancel this trip"
+            >
+              <XCircle size={13} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ManageRoutes() {
   const [routes, setRoutes] = useState<any[]>([]);
   const [buses, setBuses] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false); // overlay-only refresh
-  const [stats, setStats] = useState<any>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Issue 17: super-admin has no schoolId in their JWT — resolve async
@@ -87,7 +167,7 @@ export function ManageRoutes() {
 
   const [activeTab, setActiveTab] = useState('All Routes');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 25;
 
   // ─── Editor / modal state ───────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,9 +185,6 @@ export function ManageRoutes() {
   const [cancelPickerRouteId, setCancelPickerRouteId] = useState<string | null>(null);
   const [cancellingTripIds, setCancellingTripIds] = useState<Set<string>>(new Set());
   const [deletingRouteIds, setDeletingRouteIds] = useState<Set<string>>(new Set());
-  // Set when a delete was refused for active trips, so the picker it opens knows it is
-  // the middle of a deletion and can finish the job instead of dead-ending.
-  const [deleteBlockedRouteId, setDeleteBlockedRouteId] = useState<string | null>(null);
 
   // ─── Issue 12: filter panel ─────────────────────────────────────────────
   const [filterOpen, setFilterOpen] = useState(false);
@@ -139,9 +216,9 @@ export function ManageRoutes() {
     }
     setLoadError(null);
 
-    // Issue 9: load routes/buses/drivers independently; stats never blocks the list
-    Promise.allSettled([fetchRoutes(), fetchBuses(), fetchDrivers(), fetchStats()])
-      .then(([routesResult, busesResult, driversResult, statsResult]) => {
+    // Issue 9: load routes/buses/drivers independently; one failure never blanks the list
+    Promise.allSettled([fetchRoutes(), fetchBuses(), fetchDrivers()])
+      .then(([routesResult, busesResult, driversResult]) => {
         if (routesResult.status === 'fulfilled') {
           setRoutes(routesResult.value);
         } else {
@@ -151,7 +228,6 @@ export function ManageRoutes() {
         }
         if (busesResult.status === 'fulfilled') setBuses(busesResult.value);
         if (driversResult.status === 'fulfilled') setDrivers(driversResult.value);
-        if (statsResult.status === 'fulfilled') setStats(statsResult.value);
       })
       .finally(() => {
         setLoading(false);
@@ -170,42 +246,34 @@ export function ManageRoutes() {
     drivers.reduce((acc, d) => { acc[d.id] = d; return acc; }, {} as Record<string, any>),
   [drivers]);
 
-  // ─── Derive "representative trip" per route ──────────────────────────────
-  // Issue 2: use activeTripsSoonestFirst so an in-progress trip is never hidden
-  // behind a later-created completed trip.
-  const getRepresentativeTrip = (route: any) => {
-    const active = activeTripsSoonestFirst(route.trips);
-    if (active.length > 0) return active[0];
-    // Fall back to the most-recently-scheduled overall trip for display
-    return [...(route.trips ?? [])]
-      .sort((a, b) =>
-        Date.parse(b.scheduledStart ?? b.createdAt ?? '') -
-        Date.parse(a.scheduledStart ?? a.createdAt ?? '')
-      )[0] ?? null;
-  };
+  // Routes no longer collapse to a single "representative" trip. Every trip a route has
+  // is its own row, so nothing on screen refers to a trip the admin cannot see.
 
   // ─── Filter + sort ───────────────────────────────────────────────────────
+  // Every predicate below reads the route's whole trip list. Testing one chosen trip
+  // was what made a driver's own route disappear from their own filter.
+  const stopCountOf = (route: any) =>
+    Array.isArray(route.stops) ? route.stops.length : (route.stops || 0);
+
   const filteredRoutes = useMemo(() => {
     let list = routes.filter((route: any) => {
-      const repTrip = getRepresentativeTrip(route);
-      const statusStr = repTrip?.status ?? 'INACTIVE';
+      const activeCount = activeTripsSoonestFirst(route.trips).length;
 
-      // Tab filter
-      if (activeTab === 'Active' && !ACTIVE_TRIP_STATUSES.includes(statusStr)) return false;
-      if (activeTab === 'Inactive' && !['COMPLETED', 'CANCELLED', 'INACTIVE'].includes(statusStr)) return false;
+      if (activeTab === 'Running' && activeCount === 0) return false;
+      if (activeTab === 'Idle' && activeCount > 0) return false;
 
-      // Issue 12: client-side filters
       if (searchText && !route.name.toLowerCase().includes(searchText.toLowerCase())) return false;
 
-      if (filterBusId && repTrip?.busId !== filterBusId) return false;
-      if (filterDriverId && repTrip?.driverId !== filterDriverId) return false;
+      // "No active trips" is a negation over the whole route, so it cannot be expressed
+      // as a per-trip predicate — it gates first, then bus/driver still narrow the rest.
+      if (filterStatus === 'NONE' && activeCount > 0) return false;
+      if (!routeHasMatchingTrip(route.trips, {
+        busId: filterBusId || undefined,
+        driverId: filterDriverId || undefined,
+        status: (filterStatus === 'All' || filterStatus === 'NONE') ? undefined : filterStatus,
+      })) return false;
 
-      if (filterStatus === 'Unassigned' && repTrip?.busId) return false;
-      else if (filterStatus !== 'All' && filterStatus !== 'Unassigned') {
-        if (statusStr !== filterStatus) return false;
-      }
-
-      const stopCount = Array.isArray(route.stops) ? route.stops.length : (route.stops || 0);
+      const stopCount = stopCountOf(route);
       if (filterStops === '2+' && stopCount < 2) return false;
       if (filterStops === '5+' && stopCount < 5) return false;
       if (filterStops === '10+' && stopCount < 10) return false;
@@ -216,20 +284,16 @@ export function ManageRoutes() {
     // Issue 13: column sorting
     list = [...list].sort((a, b) => {
       let av: any, bv: any;
-      const aTrip = getRepresentativeTrip(a);
-      const bTrip = getRepresentativeTrip(b);
       switch (sortKey) {
         case 'stops':
-          av = Array.isArray(a.stops) ? a.stops.length : (a.stops || 0);
-          bv = Array.isArray(b.stops) ? b.stops.length : (b.stops || 0);
+          av = stopCountOf(a); bv = stopCountOf(b);
           break;
         case 'duration':
           av = a.estimatedDuration ?? a.time ?? 0;
           bv = b.estimatedDuration ?? b.time ?? 0;
           break;
         case 'departure':
-          av = aTrip?.scheduledStart ? Date.parse(aTrip.scheduledStart) : 0;
-          bv = bTrip?.scheduledStart ? Date.parse(bTrip.scheduledStart) : 0;
+          av = nextDepartureAt(a.trips); bv = nextDepartureAt(b.trips);
           break;
         default: // name
           av = a.name?.toLowerCase() ?? '';
@@ -242,6 +306,14 @@ export function ManageRoutes() {
 
     return list;
   }, [routes, activeTab, searchText, filterBusId, filterDriverId, filterStatus, filterStops, sortKey, sortDir]);
+
+  // Issue 12: a filter the admin cannot see is a filter they cannot undo.
+  const activeFilterCount =
+    (filterBusId ? 1 : 0) + (filterDriverId ? 1 : 0) +
+    (filterStatus !== 'All' ? 1 : 0) + (filterStops !== 'any' ? 1 : 0);
+  const clearFilters = () => {
+    setFilterBusId(''); setFilterDriverId(''); setFilterStatus('All'); setFilterStops('any');
+  };
 
   const totalPages = Math.max(1, Math.ceil(filteredRoutes.length / itemsPerPage));
 
@@ -262,14 +334,11 @@ export function ManageRoutes() {
   const handleOpenEdit = (route: any) => { setEditingRoute(route); setIsModalOpen(true); };
 
   const handleOpenAssign = (route: any) => {
-    const repTrip = getRepresentativeTrip(route);
+    // Starts empty on purpose: this creates a *new* trip, and prefilling it from some
+    // other trip on the route is how an admin ends up duplicating a crew by accident.
     setAssignRouteName(route.name);
     setAssignFormData({
-      routeId: route.id,
-      busId: repTrip?.busId || '',
-      driverId: repTrip?.driverId || '',
-      direction: repTrip?.direction ?? '',
-      scheduledStart: '',
+      routeId: route.id, busId: '', driverId: '', direction: '', scheduledStart: '',
     });
     setAssignErrors({});
     setIsAssignModalOpen(true);
@@ -308,17 +377,19 @@ export function ManageRoutes() {
     }
   };
 
+  // Nielsen #5: prevent the error instead of recovering from it. A route with active
+  // trips opens the picker straight away rather than firing a delete we already know the
+  // server will refuse. The 409 handling stays as the backstop — another admin can
+  // start a trip between this render and the click.
   const handleDelete = async (route: any, opts: { confirmed?: boolean } = {}) => {
     const routeId = route.id;
     if (!opts.confirmed) {
-      // Warn with what we already know rather than letting them discover it from a failure.
       const active = activeTripsSoonestFirst(route.trips).length;
-      const warning = active
-        ? `
-
-This route has ${active} active trip${active === 1 ? '' : 's'}. You will be asked to cancel ${active === 1 ? 'it' : 'them'} first.`
-        : '';
-      if (!window.confirm(`Are you sure you want to delete this route?${warning}`)) return;
+      if (active > 0) {
+        setCancelPickerRouteId(routeId);
+        return;
+      }
+      if (!window.confirm('Are you sure you want to delete this route?')) return;
     }
     setDeletingRouteIds(prev => new Set(prev).add(routeId));
     try {
@@ -331,8 +402,6 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
       // both a 409; only the counts tell them apart.
       const blocked = routeDeleteBlock(err);
       if (blocked?.kind === 'active') {
-        // Don't leave them hunting for the cancel action — open it, on this route.
-        setDeleteBlockedRouteId(routeId);
         setCancelPickerRouteId(routeId);
         return;
       }
@@ -359,41 +428,36 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
     }
   };
 
-  // When there is exactly one active trip, skip the picker and confirm directly.
-  const handleCancelActiveTrips = (route: any) => {
-    const active = activeTripsSoonestFirst(route.trips);
-    if (active.length === 0) return;
-    if (active.length === 1) {
-      const trip = active[0];
-      if (!window.confirm(`Cancel trip: ${describeTrip(trip)}?`)) return;
-      handleCancelTrip(trip);
-    } else {
-      setCancelPickerRouteId(route.id);
-    }
+  // Each trip has its own cancel button now, so there is nothing to disambiguate and the
+  // confirmation can name the exact trip it is about to cancel.
+  const handleCancelTripConfirmed = (trip: any) => {
+    if (!window.confirm(`Cancel trip: ${describeTrip(trip)}?`)) return;
+    handleCancelTrip(trip);
   };
 
-  const closeCancelPicker = () => { setCancelPickerRouteId(null); setDeleteBlockedRouteId(null); };
+  const closeCancelPicker = () => setCancelPickerRouteId(null);
 
   // ─── Issue 15: CSV export ────────────────────────────────────────────────
   const handleExportCSV = () => {
     if (filteredRoutes.length === 0) { toast.error('No routes to export'); return; }
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    const header = ['Route Name', 'Assigned Bus', 'Assigned Driver', 'Stops', 'Est Time (min)', 'Status'].map(csvCell).join(',');
+    const header = ['Route Name', 'Stops', 'Est Time (min)', 'Active Trips', 'Next Departure'].map(csvCell).join(',');
     const comment = csvCell(`# Exported ${new Date().toLocaleString()} · ${filteredRoutes.length} routes · Filter: ${activeTab}`);
 
+    // Route-level only. Bus and driver belong to a trip, not a route — exporting one
+    // arbitrary trip's crew under a route heading is the same lie the table used to tell.
     const rows = filteredRoutes.map((route: any) => {
-      const repTrip = getRepresentativeTrip(route);
-      const assignedBus = repTrip ? busesMap[repTrip.busId] : null;
-      const assignedDriver = repTrip ? driversMap[repTrip.driverId] : null;
-      const statusStr = repTrip?.status || 'INACTIVE';
-      const stopCount = Array.isArray(route.stops) ? route.stops.length : (route.stops || 0);
-      // Issue 8: use getBusDisplayName (same as table)
-      const busName = assignedBus ? getBusDisplayName(assignedBus) : (route.bus?.name || 'Unassigned');
-      const driverName = assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver';
-      // Issue 15: — instead of " mins" for missing duration
+      const active = activeTripsSoonestFirst(route.trips);
+      const next = nextDepartureAt(route.trips);
       const duration = route.estimatedDuration ?? route.time ?? null;
-      return [route.name, busName, driverName, stopCount, duration !== null ? duration : '—', statusStr].map(csvCell).join(',');
+      return [
+        route.name,
+        stopCountOf(route),
+        duration !== null ? duration : '—',
+        active.length,
+        next ? new Date(next).toLocaleString() : '—',
+      ].map(csvCell).join(',');
     });
 
     const csvContent = [comment, header, ...rows].join('\r\n');
@@ -428,12 +492,7 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
     return (
       <div className="p-6 space-y-6 animate-pulse">
         <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-slate-100 h-24 rounded-xl border border-slate-200"></div>
-          ))}
-        </div>
-        <div className="bg-slate-100 h-96 rounded-xl border border-slate-200 mt-6"></div>
+        <div className="bg-slate-100 h-96 rounded-xl border border-slate-200"></div>
       </div>
     );
   }
@@ -468,43 +527,13 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
         </div>
       )}
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="bg-orange-50 p-2.5 rounded-lg text-orange-600"><Clock size={20} /></div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Average Route Duration</p>
-            <span className="text-2xl font-bold text-slate-900 leading-none">
-              {stats?.averageRouteDuration ? `${stats.averageRouteDuration}m` : '—'}
-            </span>
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="bg-emerald-50 p-2.5 rounded-lg text-emerald-600"><CheckCircle size={20} /></div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Most Efficient Route</p>
-            <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.mostEfficientRoute || '—'}</span>
-          </div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-          <div className="bg-amber-50 p-2.5 rounded-lg text-amber-600"><Zap size={20} /></div>
-          <div>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Optimizations</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 leading-none">{stats?.pendingOptimizations ?? '—'}</span>
-              {stats?.pendingOptimizations > 0 && <span className="text-[10px] uppercase font-bold text-amber-600">Requires review</span>}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Table card */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mt-6">
         {/* Toolbar */}
         <div className="p-3 border-b border-slate-100 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <div className="flex space-x-1">
-              {['All Routes', 'Active', 'Inactive'].map((tab) => (
+              {['All Routes', 'Running', 'Idle'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -523,12 +552,15 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
                 onClick={() => setFilterOpen(o => !o)}
                 className={clsx(
                   'flex items-center gap-2 text-xs font-bold px-3 py-1.5 border rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500',
-                  filterOpen
+                  filterOpen || activeFilterCount > 0
                     ? 'text-orange-700 bg-orange-50 border-orange-200'
                     : 'text-slate-600 border-slate-200 hover:text-slate-900 hover:bg-slate-50',
                 )}
               >
                 <SlidersHorizontal size={14} /> Filters
+                {activeFilterCount > 0 && (
+                  <span className="bg-orange-600 text-white rounded-full px-1.5 text-[10px] leading-4">{activeFilterCount}</span>
+                )}
               </button>
               {/* Issue 9: manual refresh */}
               <button
@@ -564,49 +596,63 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
 
           {/* Issue 12: collapsible filter panel */}
           {filterOpen && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-100">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Bus</label>
-                <SearchableSelect
-                  options={[{ value: '', label: 'Any bus', searchValue: '' }, ...buses.map(b => ({ value: b.id, label: getBusDisplayName(b), searchValue: getBusDisplayName(b) }))]}
-                  value={filterBusId}
-                  onChange={setFilterBusId}
-                  placeholder="Any bus"
-                />
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">
+                  {activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''} applied` : 'No filters applied'}
+                </span>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="text-[10px] font-bold text-orange-600 hover:text-orange-700 focus:outline-none">
+                    Clear all
+                  </button>
+                )}
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Driver</label>
-                <SearchableSelect
-                  options={[{ value: '', label: 'Any driver', searchValue: '' }, ...drivers.map(d => ({ value: d.id, label: d.name, searchValue: d.name }))]}
-                  value={filterDriverId}
-                  onChange={setFilterDriverId}
-                  placeholder="Any driver"
-                />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Bus</label>
+                  <SearchableSelect
+                    options={[{ value: '', label: 'Any bus', searchValue: '' }, ...buses.map(b => ({ value: b.id, label: getBusDisplayName(b), searchValue: getBusDisplayName(b) }))]}
+                    value={filterBusId}
+                    onChange={setFilterBusId}
+                    placeholder="Any bus"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Driver</label>
+                  <SearchableSelect
+                    options={[{ value: '', label: 'Any driver', searchValue: '' }, ...drivers.map(d => ({ value: d.id, label: d.name, searchValue: d.name }))]}
+                    value={filterDriverId}
+                    onChange={setFilterDriverId}
+                    placeholder="Any driver"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
+                  <select
+                    value={filterStatus}
+                    onChange={e => setFilterStatus(e.target.value)}
+                    className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="All">All statuses</option>
+                    <option value="NONE">No active trips</option>
+                    {['PLANNED', 'ON_SCHEDULE', 'DELAYED', 'COMPLETED', 'CANCELLED'].map(s => (
+                      <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Min stops</label>
+                  <select
+                    value={filterStops}
+                    onChange={e => setFilterStops(e.target.value)}
+                    className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="any">Any</option>
+                    <option value="2+">2 or more</option>
+                    <option value="5+">5 or more</option>
+                    <option value="10+">10 or more</option>
+                  </select>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status</label>
-                <select
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  {['All', 'Unassigned', 'PLANNED', 'ON_SCHEDULE', 'DELAYED', 'COMPLETED', 'CANCELLED'].map(s => (
-                    <option key={s} value={s}>{s === 'All' ? 'All statuses' : s.replace('_', ' ')}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Min stops</label>
-                <select
-                  value={filterStops}
-                  onChange={e => setFilterStops(e.target.value)}
-                  className="w-full text-xs border border-slate-200 rounded-md px-2 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="any">Any</option>
-                  <option value="2+">2 or more</option>
-                  <option value="5+">5 or more</option>
-                  <option value="10+">10 or more</option>
-                </select>
               </div>
             </div>
           )}
@@ -624,18 +670,16 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
             <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
               <tr>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="name" label="Route Name" />
+                  <SortHeader col="name" label="Route" />
                 </th>
-                <th className="px-4 py-3 border-b border-slate-100">Assigned Bus &amp; Driver</th>
                 <th className="px-4 py-3 border-b border-slate-100">
                   <SortHeader col="stops" label="Stops" />
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100">
                   <SortHeader col="duration" label="Est. Time" />
                 </th>
-                <th className="px-4 py-3 border-b border-slate-100">Status</th>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="departure" label="Next Departure" />
+                  <SortHeader col="departure" label="Trips" />
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
               </tr>
@@ -643,131 +687,78 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
             <tbody className="divide-y divide-slate-100">
               {displayRoutes.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    {activeTab === 'All Routes' && !searchText && !filterBusId && !filterDriverId
+                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500 text-sm">
+                    {/* The old test ignored the status and stop filters, so narrowing to an
+                        empty result told the admin to "create one to get started". */}
+                    {activeTab === 'All Routes' && !searchText && activeFilterCount === 0
                       ? 'No routes found. Create one to get started.'
                       : 'No routes match the current filters.'}
                   </td>
                 </tr>
               ) : displayRoutes.map((route: any) => {
-                const repTrip = getRepresentativeTrip(route);
-                const assignedBus = repTrip ? busesMap[repTrip.busId] : null;
-                const assignedDriver = repTrip ? driversMap[repTrip.driverId] : null;
-                const statusStr = repTrip?.status || 'INACTIVE';
-                const stopsCount = Array.isArray(route.stops) ? route.stops.length : (route.stops || 0);
+                const stopsCount = stopCountOf(route);
                 const isDeleting = deletingRouteIds.has(route.id);
                 const activeTrips = activeTripsSoonestFirst(route.trips);
+                const pastTrips = (route.trips ?? []).filter((t: any) => !isActiveTrip(t));
                 const isExpanded = expandedRouteIds.has(route.id);
-
-                // Issue 13: next departure — soonest future-scheduled trip
-                const nextDep = [...(route.trips ?? [])]
-                  .filter(t => t.scheduledStart && new Date(t.scheduledStart) > new Date() && ACTIVE_TRIP_STATUSES.includes(t.status))
-                  .sort((a, b) => Date.parse(a.scheduledStart) - Date.parse(b.scheduledStart))[0];
+                const nextAt = nextDepartureAt(route.trips);
 
                 return (
                   <React.Fragment key={route.id}>
-                    <tr className={clsx('hover:bg-slate-50/50 transition-colors group', isDeleting && 'opacity-50 pointer-events-none')}>
+                    {/* Route row: only what actually belongs to the route. */}
+                    <tr className={clsx('hover:bg-slate-50/50 transition-colors', isDeleting && 'opacity-50 pointer-events-none')}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="bg-orange-50 text-orange-600 p-2 rounded flex-shrink-0">
                             <Map size={14} />
                           </div>
-                          <div>
-                            <span className="font-bold text-slate-900 text-xs">{route.name}</span>
-                            {/* Expandable trip history toggle */}
-                            {(route.trips?.length ?? 0) > 0 && (
-                              <button
-                                onClick={() => setExpandedRouteIds(s => {
-                                  const n = new Set(s);
-                                  n.has(route.id) ? n.delete(route.id) : n.add(route.id);
-                                  return n;
-                                })}
-                                className="block text-[10px] text-slate-400 hover:text-orange-600 focus:outline-none mt-0.5"
-                              >
-                                {isExpanded ? '▲ Hide trips' : `▼ ${route.trips.length} trip${route.trips.length > 1 ? 's' : ''}`}
-                              </button>
-                            )}
-                          </div>
+                          <span className="font-bold text-slate-900 text-xs">{route.name}</span>
                         </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {/* Issue 8: getBusDisplayName everywhere */}
-                        <p className="font-semibold text-slate-900 text-xs">
-                          {assignedBus ? getBusDisplayName(assignedBus) : (route.bus?.name || 'No bus assigned')}
-                        </p>
-                        <p className="text-[10px] text-slate-500">
-                          {assignedDriver?.name || route.bus?.driver?.user?.name || 'No driver'}
-                        </p>
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-700 text-xs">{stopsCount} Stops</td>
                       <td className="px-4 py-3 font-mono text-[11px] text-slate-700">
-                        {/* Issue 15: — for missing duration */}
                         {(route.estimatedDuration ?? route.time) != null ? `${route.estimatedDuration ?? route.time} mins` : '—'}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={clsx(
-                          'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-2',
-                          (TRIP_TONES[statusStr] || FALLBACK_TONE).badge,
-                        )}>
-                          <div className={clsx('w-1.5 h-1.5 rounded-full', (TRIP_TONES[statusStr] || FALLBACK_TONE).dot)}></div>
-                          {statusStr === 'INACTIVE' ? 'No trip scheduled' : statusStr.replace('_', ' ')}
-                        </span>
-                      </td>
-                      {/* Issue 13: next departure column */}
-                      <td className="px-4 py-3 font-mono text-[10px] text-slate-500">
-                        {nextDep ? (
-                          <span title={new Date(nextDep.scheduledStart).toLocaleString()}>
-                            {new Date(nextDep.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            <span className="ml-1 text-slate-400">
-                              {new Date(nextDep.scheduledStart).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                            </span>
+                      <td className="px-4 py-3 text-xs">
+                        {activeTrips.length === 0 ? (
+                          <span className="text-slate-400">No active trips</span>
+                        ) : (
+                          <span className="text-slate-700">
+                            <span className="font-semibold">{activeTrips.length} active</span>
+                            {nextAt > 0 && (
+                              <span className="ml-2 font-mono text-[10px] text-slate-500" title={new Date(nextAt).toLocaleString()}>
+                                {new Date(nextAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                <span className="ml-1 text-slate-400">
+                                  {new Date(nextAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                </span>
+                              </span>
+                            )}
                           </span>
-                        ) : '—'}
+                        )}
                       </td>
+                      {/* Four actions, always the same four in the same places. The trip
+                          actions moved onto the trip rows, so nothing shifts per row. */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          {ACTIVE_TRIP_STATUSES.includes(statusStr) && (
-                            <>
-                              <button
-                                onClick={() => setEditingTrip(repTrip)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                title="Edit Trip"
-                                aria-label="Edit Trip"
-                              >
-                                <Edit3 size={14} />
-                              </button>
-                              <button
-                                onClick={() => handleCancelActiveTrips(route)}
-                                disabled={activeTrips.some(t => cancellingTripIds.has(t.id))}
-                                className="p-2 text-amber-600 hover:bg-amber-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
-                                title="Cancel Active Trip"
-                                aria-label="Cancel Active Trip"
-                              >
-                                <XCircle size={14} />
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={() => handleOpenAssign(route)}
+                            className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <Plus size={13} /> Trip
+                          </button>
                           <Link
                             href={`/map?route=${encodeURIComponent(route.name)}`}
-                            className="inline-block p-2 text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            title="View on Map"
-                            aria-label="View on Map"
+                            className="inline-block p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            title="View on map"
+                            aria-label="View on map"
                           >
                             <Map size={14} />
                           </Link>
                           <button
-                            onClick={() => handleOpenAssign(route)}
-                            className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                            title="Assign Bus & Driver"
-                            aria-label="Assign Bus and Driver"
-                          >
-                            <Users size={14} />
-                          </button>
-                          <button
                             onClick={() => handleOpenEdit(route)}
                             className="p-2 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
-                            title="Edit Route"
-                            aria-label="Edit Route"
+                            title="Edit route name and stops"
+                            aria-label="Edit route name and stops"
                           >
                             <Edit3 size={14} />
                           </button>
@@ -775,8 +766,8 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
                             onClick={() => handleDelete(route)}
                             disabled={isDeleting}
                             className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
-                            title="Delete Route"
-                            aria-label="Delete Route"
+                            title="Delete route"
+                            aria-label="Delete route"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -784,47 +775,60 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
                       </td>
                     </tr>
 
-                    {/* Issue 13: expandable trip history */}
-                    {isExpanded && (
+                    {/* Active trips are always visible, never behind a toggle: they are
+                        what the admin came to see, and a route has one or two of them. */}
+                    {activeTrips.map((trip: any) => (
+                      <tr key={trip.id} className="bg-slate-50/60">
+                        <td colSpan={5} className="px-4 py-2">
+                          <TripRow
+                            trip={trip}
+                            bus={busesMap[trip.busId]}
+                            driver={driversMap[trip.driverId]}
+                            busy={cancellingTripIds.has(trip.id)}
+                            onEdit={() => setEditingTrip(trip)}
+                            onCancel={() => handleCancelTripConfirmed(trip)}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* History stays behind a toggle and nothing acts on it. */}
+                    {pastTrips.length > 0 && (
                       <tr>
-                        <td colSpan={7} className="bg-slate-50 px-6 pb-3 pt-1">
-                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Trip History</p>
-                          <div className="space-y-1">
-                            {[...(route.trips ?? [])]
-                              .sort((a: any, b: any) => Date.parse(b.scheduledStart ?? b.createdAt ?? '') - Date.parse(a.scheduledStart ?? a.createdAt ?? ''))
-                              .slice(0, 8)
-                              .map((t: any) => {
-                                const bus = busesMap[t.busId];
-                                const driver = driversMap[t.driverId];
-                                const isCancellingThis = cancellingTripIds.has(t.id);
-                                return (
-                                  <div key={t.id} className="flex items-center justify-between text-xs text-slate-600 bg-white rounded px-3 py-1.5 border border-slate-100">
-                                    <div className="flex items-center gap-3">
-                                      <span className={clsx(
-                                        'px-1.5 py-0.5 rounded text-[9px] font-bold uppercase',
-                                        (TRIP_TONES[t.status] || FALLBACK_TONE).badge,
-                                      )}>
-                                        {t.status?.replace('_', ' ') ?? 'UNKNOWN'}
-                                      </span>
-                                      <span className="font-mono text-slate-500">
-                                        {t.scheduledStart ? new Date(t.scheduledStart).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No schedule'}
-                                      </span>
-                                      {bus && <span className="text-slate-400">{getBusDisplayName(bus)}</span>}
-                                      {driver && <span className="text-slate-400">{driver.name}</span>}
-                                    </div>
-                                    {isActiveTrip(t) && (
-                                      <button
-                                        onClick={() => handleCancelTrip(t)}
-                                        disabled={isCancellingThis}
-                                        className="text-amber-600 hover:text-amber-800 text-[10px] font-bold focus:outline-none disabled:opacity-50"
-                                      >
-                                        {isCancellingThis ? 'Cancelling…' : 'Cancel'}
-                                      </button>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                          </div>
+                        <td colSpan={5} className="px-4 pb-2 pt-0">
+                          <button
+                            onClick={() => setExpandedRouteIds(s => {
+                              const n = new Set(s);
+                              if (n.has(route.id)) n.delete(route.id); else n.add(route.id);
+                              return n;
+                            })}
+                            className="text-[10px] text-slate-400 hover:text-orange-600 focus:outline-none"
+                          >
+                            {isExpanded
+                              ? '▲ Hide past trips'
+                              : `▼ ${pastTrips.length} past trip${pastTrips.length > 1 ? 's' : ''}`}
+                          </button>
+                          {isExpanded && (
+                            <div className="mt-2 space-y-1">
+                              {[...pastTrips]
+                                .sort((a: any, b: any) => Date.parse(b.scheduledStart ?? b.createdAt ?? '') - Date.parse(a.scheduledStart ?? a.createdAt ?? ''))
+                                .slice(0, 8)
+                                .map((t: any) => (
+                                  <TripRow
+                                    key={t.id}
+                                    trip={t}
+                                    bus={busesMap[t.busId]}
+                                    driver={driversMap[t.driverId]}
+                                    muted
+                                  />
+                                ))}
+                              {pastTrips.length > 8 && (
+                                <p className="text-[10px] text-slate-400 pt-1">
+                                  Showing the 8 most recent of {pastTrips.length}.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}
@@ -878,20 +882,18 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
         </div>
       </div>
 
-      {/* ─── Issue 3: Trip picker modal ────────────────────────────────────────── */}
+      {/* Clear-the-trips-then-delete modal. Only the delete flow opens this now —
+          cancelling a single trip is a button on that trip's own row, so there is
+          nothing left to disambiguate here. */}
       {cancelPickerRoute && (() => {
         const pickerTrips = activeTripsSoonestFirst(cancelPickerRoute.trips);
-        const finishingDelete = deleteBlockedRouteId === cancelPickerRoute.id;
-        const empty = pickerTrips.length === 0;
-        const cleared = finishingDelete && empty;
+        const cleared = pickerTrips.length === 0;
         const deletingThis = deletingRouteIds.has(cancelPickerRoute.id);
         return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-base">
-                {finishingDelete ? 'Cancel trips to delete this route' : 'Cancel a Trip'}
-              </h3>
+              <h3 className="font-bold text-slate-900 text-base">Cancel trips to delete this route</h3>
               <button onClick={closeCancelPicker} className="text-slate-400 hover:text-slate-600 p-1" aria-label="Close">
                 <X size={18} />
               </button>
@@ -900,11 +902,7 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
               <p className="text-xs text-slate-500 mb-3">
                 {cleared
                   ? <>All active trips on <strong>{cancelPickerRoute.name}</strong> are cancelled. You can delete the route now.</>
-                  : finishingDelete
-                  ? <><strong>{cancelPickerRoute.name}</strong> can&apos;t be deleted while {pickerTrips.length === 1 ? 'a trip is' : 'trips are'} still active. Cancel {pickerTrips.length === 1 ? 'it' : 'them'} here, then delete.</>
-                  : empty
-                  ? <><strong>{cancelPickerRoute.name}</strong> has no active trips left.</>
-                  : <>Route <strong>{cancelPickerRoute.name}</strong> has multiple active trips. Select which to cancel:</>}
+                  : <><strong>{cancelPickerRoute.name}</strong> can&apos;t be deleted while {pickerTrips.length === 1 ? 'a trip is' : 'trips are'} still active. Cancel {pickerTrips.length === 1 ? 'it' : 'them'} here, then delete.</>}
               </p>
               <div className="space-y-2">
                 {pickerTrips.map((trip: any) => {
@@ -940,8 +938,7 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
               </div>
               {/* The whole point: finish the deletion here rather than sending them back
                   to hunt for the delete button they already pressed once. */}
-              {(finishingDelete || empty) && (
-                <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
+              <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
                   <button
                     onClick={closeCancelPicker}
                     disabled={deletingThis}
@@ -949,16 +946,15 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
                   >
                     {cleared ? 'Keep route' : 'Close'}
                   </button>
-                  {finishingDelete && <button
+                  <button
                     onClick={() => handleDelete(cancelPickerRoute, { confirmed: true })}
                     disabled={!cleared || deletingThis}
                     title={cleared ? undefined : 'Cancel the remaining active trips first'}
                     className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {deletingThis ? 'Deleting…' : 'Delete route'}
-                  </button>}
+                  </button>
                 </div>
-              )}
             </div>
           </div>
         </div>
@@ -1102,8 +1098,6 @@ This route has ${active} active trip${active === 1 ? '' : 's'}. You will be aske
             <RouteMapEditor
               schoolId={resolvedSchoolId}
               initialRoute={editingRoute}
-              buses={buses}
-              drivers={drivers}
               onSaved={() => {
                 setIsModalOpen(false);
                 loadRoutes(true);

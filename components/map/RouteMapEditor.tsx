@@ -4,7 +4,7 @@ import GoogleRouteMap from './GoogleRouteMap';
 import { fetchOsrmRoute, reverseGeocode, searchLocation, Stop } from '@/lib/osrm';
 import { hasMapsKey, geocodeLatLng, geocodeAddress } from '@/lib/googleMaps';
 import { fetchGoogleTrafficRoute } from '@/lib/googleRoutes';
-import { createRoute, updateRoute, connectSocket, createTrip, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
+import { createRoute, updateRoute, connectSocket, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
 import toast from 'react-hot-toast';
 import { Search, Loader2, Map as MapIcon, AlertTriangle, RefreshCw, X as XIcon } from 'lucide-react';
@@ -12,11 +12,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import { getBusDisplayName } from '@/lib/buses';
 import { activeTripsSoonestFirst } from '@/lib/trips';
-import { DirectionToggle } from '@/components/ui/DirectionToggle';
-import type { Direction } from '@/lib/runs';
 
 // ─── Stable unique id per stop (fixes duplicate lat/lng collisions) ───
 let uidCounter = 0;
@@ -129,21 +125,20 @@ function SortableStopItem({ stop, index, onRemove, onRename, disabled }: any) {
   );
 }
 
-export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers, onSaved, onCancel }:
-  { schoolId: string; initialRoute?: any; buses?: any[]; drivers?: any[]; onSaved: () => void; onCancel: () => void }) {
+export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCancel }:
+  { schoolId: string; initialRoute?: any; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(initialRoute?.name || '');
   const [stops, setStops] = useState<EditorStop[]>(
     (initialRoute?.stops || []).map((s: any) => ({ ...s, uid: makeUid() }))
   );
 
-  // Issue 2/4c: use activeTripsSoonestFirst so we pick the live trip, not just
-  // the last element, and avoid creating a new trip on top of an existing one.
-  const initialActiveTrip = activeTripsSoonestFirst(initialRoute?.trips)[0] ?? null;
-
-  // Assignment state
-  const [selectedBusId, setSelectedBusId] = useState(initialActiveTrip?.busId || '');
-  const [selectedDriverId, setSelectedDriverId] = useState(initialActiveTrip?.driverId || '');
-  const [direction, setDirection] = useState<Direction | ''>(initialActiveTrip?.direction ?? '');
+  // This editor edits the route: its name, its stops, its shape. Crew and direction
+  // belong to a trip and are set where trips are made, so that a save here can never
+  // surprise the admin by starting one.
+  //
+  // The route's live trip is still read — not to edit, but so the map can follow the
+  // bus that is on this route right now while its stops are being moved.
+  const liveBusId = activeTripsSoonestFirst(initialRoute?.trips)[0]?.busId ?? '';
 
   const [osrm, setOsrm] = useState<any>(null);
   const [osrmLoading, setOsrmLoading] = useState(false);
@@ -175,8 +170,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
       stops: (initialRoute?.stops || []).map((s: any) => ({
         id: s.id, name: s.name, lat: s.lat, lng: s.lng,
       })),
-      busId: initialActiveTrip?.busId || '',
-      driverId: initialActiveTrip?.driverId || '',
     })
   );
 
@@ -190,13 +183,13 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Live bus tracking for the currently selected bus
+  // Live position of whichever bus is currently running this route
   useEffect(() => {
-    if (selectedBusId) {
+    if (liveBusId) {
       const socket = connectSocket();
       hasCenteredOnBusRef.current = false;
       socket.on('location_update', (data: any) => {
-        if (data.busId === selectedBusId) {
+        if (data.busId === liveBusId) {
           setLiveBusPosition([data.lat, data.lng]);
           if (!hasCenteredOnBusRef.current) {
             setLastAddedPos([data.lat, data.lng]);
@@ -208,7 +201,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     } else {
       setLiveBusPosition(null);
     }
-  }, [selectedBusId]);
+  }, [liveBusId]);
 
   // Seed OSRM from an existing route that already has geometry
   useEffect(() => {
@@ -380,8 +373,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     const current = JSON.stringify({
       name,
       stops: stops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng })),
-      busId: selectedBusId,
-      driverId: selectedDriverId,
     });
     return current !== initialSnapshot.current;
   };
@@ -391,26 +382,9 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     onCancel();
   };
 
-  // Saving the editor creates a trip only when crew is set and actually changed —
-  // the same rule decides whether a direction is required.
-  const willCreateTrip = Boolean(
-    selectedBusId && selectedDriverId &&
-    (selectedBusId !== (initialActiveTrip?.busId || '') ||
-     selectedDriverId !== (initialActiveTrip?.driverId || '') ||
-     !initialActiveTrip)
-  );
-
   const handleSave = async () => {
     if (!name.trim() || stops.length < 2) {
       toast.error('Route needs a name and at least 2 stops.');
-      return;
-    }
-    if ((selectedBusId && !selectedDriverId) || (!selectedBusId && selectedDriverId)) {
-      toast.error('Please select both a bus and a driver to assign.');
-      return;
-    }
-    if (willCreateTrip && !direction) {
-      toast.error('Choose a direction for the trip — pickup or drop-off.');
       return;
     }
     if (osrmLoading) {
@@ -455,14 +429,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
         createdRouteIdRef.current = routeId ?? null;
       }
 
-      // Issue 4c: only create a trip when bus/driver actually changed from the
-      // initial active trip, or when there was no active trip at all.
-      if (willCreateTrip && routeId) {
-        await createTrip({ routeId, busId: selectedBusId, driverId: selectedDriverId, direction: direction as Direction });
-        toast.success(initialRoute?.id ? 'Route updated & trip started!' : 'Route created & assigned!');
-      } else {
-        toast.success(initialRoute?.id ? 'Route updated' : 'Route created successfully');
-      }
+      toast.success(initialRoute?.id ? 'Route updated' : 'Route created');
       onSaved();
     } catch (err: any) {
       toast.error(err.message || 'Save failed');
@@ -472,20 +439,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
   };
 
   const canSave = !saving && !osrmLoading && stops.length >= 2 && !!name.trim() && !!osrm;
-
-  // Bus options with display names (Issue 8)
-  const busOptions = (buses || []).map((bus: any) => ({
-    value: bus.id,
-    label: getBusDisplayName(bus),
-    subLabel: bus.capacity ? `${bus.capacity} seats` : undefined,
-    searchValue: getBusDisplayName(bus),
-  }));
-
-  const driverOptions = (drivers || []).map((driver: any) => ({
-    value: driver.id,
-    label: driver.name,
-    subLabel: driver.email,
-  }));
 
   return (
     <div className="flex flex-col gap-4 h-full max-h-[85vh]">
@@ -509,43 +462,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
               onChange={e => setName(e.target.value)}
             />
           </div>
-
-          {buses && drivers && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                {/* Issue 16a: clearable lets admins remove an existing assignment */}
-                <SearchableSelect
-                  disabled={saving}
-                  label="Assign Bus"
-                  options={busOptions}
-                  value={selectedBusId}
-                  onChange={(val) => setSelectedBusId(val)}
-                  placeholder="Select bus"
-                  clearable
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <SearchableSelect
-                  disabled={saving}
-                  label="Assign Driver"
-                  options={driverOptions}
-                  value={selectedDriverId}
-                  onChange={(val) => setSelectedDriverId(val)}
-                  placeholder="Select driver"
-                  clearable
-                />
-              </div>
-            </div>
-          )}
-
-          {willCreateTrip && (
-            <DirectionToggle
-              name="editor-trip-direction"
-              value={direction}
-              disabled={saving}
-              onChange={setDirection}
-            />
-          )}
 
           <div className="flex flex-col gap-2 mt-2">
             <label className="text-sm font-semibold text-slate-700 flex justify-between items-center">

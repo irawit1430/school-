@@ -89,3 +89,37 @@ export const routeDeleteBlock = (error: unknown): RouteDeleteBlock | null => {
   }
   return null;
 };
+
+/**
+ * The soonest active trip's scheduled start, as a sortable epoch (0 when there is none).
+ *
+ * Deliberately not "the soonest *future* departure": a trip that is running right now
+ * departed in the past, and hiding it would reintroduce the bug where the row went quiet
+ * about the very trip the admin is watching.
+ */
+export const nextDepartureAt = (trips: any[] | null | undefined): number => {
+  const soonest = activeTripsSoonestFirst(trips)[0];
+  return soonest?.scheduledStart ? Date.parse(soonest.scheduledStart) || 0 : 0;
+};
+
+/**
+ * Does this route have a trip matching the admin's bus/driver/status filter?
+ *
+ * Route-level on purpose. The old filter tested one heuristically-chosen "representative"
+ * trip, so filtering by a driver found only the routes where that driver's trip happened
+ * to win the pick — a route they genuinely drive could vanish from their own filter.
+ *
+ * The predicates must hold on the *same* trip: "bus 12 AND delayed" means one trip that
+ * is both, not a route with some delayed trip and some trip on bus 12.
+ */
+export const routeHasMatchingTrip = (
+  trips: any[] | null | undefined,
+  filter: { busId?: string; driverId?: string; status?: string },
+): boolean => {
+  const { busId, driverId, status } = filter;
+  if (!busId && !driverId && !status) return true;
+  return (trips ?? []).some(trip =>
+    (!busId || trip.busId === busId) &&
+    (!driverId || trip.driverId === driverId) &&
+    (!status || trip.status === status));
+};
