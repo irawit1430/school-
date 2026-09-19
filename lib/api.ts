@@ -2,6 +2,8 @@ import { CONFIG } from './config';
 import { io, Socket } from 'socket.io-client';
 import { cachedGet, clearApiCache } from './apiCache';
 import { normalizeNotification } from './notifications';
+import { parseStudentImportCSV } from './studentImport';
+import type { Direction } from './runs';
 
 export { clearApiCache };
 
@@ -45,12 +47,19 @@ export const clearAuth = () => {
 export class ApiError extends Error {
   status: number;
   issues?: Array<{ path: string; message: string }>;
+  /**
+   * The parsed error body. Some endpoints distinguish two failures that share a status
+   * by a machine-readable field the message alone doesn't carry — a 409 from the mapping
+   * endpoints is either a stop conflict or `code: "MAPPING_EXISTS"`.
+   */
+  data?: Record<string, any>;
 
-  constructor(message: string, status: number, issues?: Array<{ path: string; message: string }>) {
+  constructor(message: string, status: number, issues?: Array<{ path: string; message: string }>, data?: Record<string, any>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.issues = issues;
+    this.data = data;
   }
 }
 
@@ -128,7 +137,8 @@ async function request<T = any>(
     const err = new ApiError(
       data.error || `HTTP ${res.status}`,
       res.status,
-      data.issues
+      data.issues,
+      data
     );
     throw err;
   }
@@ -268,12 +278,16 @@ export function connectSocket(): Socket {
 }
 
 // ─── Stats ─────────────────────────────────────────────────
-export const fetchStats = async () => {
+export const fetchStats = async (options: { strict?: boolean } = {}) => {
   try {
     const schoolId = await getSchoolId();
-    if (!schoolId) return {};
+    if (!schoolId) {
+      if (options.strict) throw new ApiError('No school ID found', 0);
+      return {};
+    }
     return await api(`/schools/${schoolId}/stats`);
   } catch (err) {
+    if (options.strict) throw err;
     console.error('Failed to fetch stats:', err);
     return {};
   }
@@ -354,8 +368,28 @@ export const createStudent = async (data: {
 export const assignStudentToStop = (data: { studentId: string; routeStopId: string }) =>
   api('/student-route-mappings', { method: 'POST', body: data });
 
+/**
+ * Move an existing assignment to another stop — across routes as well as within one.
+ *
+ * One call on purpose. Delete-then-create could leave a child assigned to nothing if the
+ * create failed, and a plain POST doesn't replace: same route 409s, different route
+ * silently adds a second mapping and puts the child on two driver rosters. A failed PUT
+ * changes nothing at all.
+ *
+ * Omitting `direction` keeps the leg the mapping already serves; pass `null` explicitly
+ * to widen a one-leg mapping back to both.
+ */
+export const updateStudentMapping = (mappingId: string, data: { routeStopId: string; direction?: Direction | null }) =>
+  api(`/student-route-mappings/${mappingId}`, { method: 'PUT', body: data });
+
 // ─── Trips ─────────────────────────────────────────────────
-export const createTrip = async (data: { routeId: string; busId: string; driverId: string }) => {
+/**
+ * `direction` is optional server-side for backwards compatibility only. Omitting it
+ * stores `direction: null`, which costs the driver app its stop order and the parent
+ * app its notification wording — so it is required here, and the type is what stops a
+ * new caller from quietly dropping it.
+ */
+export const createTrip = async (data: { routeId: string; busId: string; driverId: string; direction: Direction; scheduledStart?: string }) => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
   return api(`/schools/${schoolId}/trips`, { method: 'POST', body: data });
@@ -368,7 +402,8 @@ export const updateTrip = async (tripId: string, data: {
   routeId?: string | null;
   busId?: string | null;
   driverId?: string | null;
-  scheduledStart?: string;
+  direction?: Direction;
+  scheduledStart?: string | null;
 }) => api(`/trips/${tripId}`, { method: 'PUT', body: data });
 
 // ─── Attendance ────────────────────────────────────────────
@@ -522,46 +557,18 @@ export const sendBroadcast = async (data: any) => {
 export const fetchDeviceLocations = () =>
   api('/devices/locations');
 export const importStudentsCSV = async (file: File) => {
+  let text: string;
+  try {
+    text = await file.text();
+  } catch {
+    throw new ApiError('Could not read this CSV file. Select it again and retry.', 400);
+  }
+  const preview = parseStudentImportCSV(text);
+  if (!preview.valid) {
+    throw new ApiError('Correct the CSV errors before importing students.', 400,
+      preview.errors.map(error => ({ path: `row.${error.rowNumber}`, message: `Line ${error.rowNumber}: ${error.message}` })));
+  }
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
-  
-  return new Promise<any>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const text = e.target?.result as string;
-        if (!text) throw new Error("Empty file");
-        
-        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-        if (lines.length < 2) throw new Error("No data rows found");
-        
-        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
-        const nameIdx = headers.findIndex(h => h.includes('name') && !h.includes('guardian'));
-        const rollIdx = headers.findIndex(h => h.includes('roll') || h.includes('id'));
-        const gNameIdx = headers.findIndex(h => h.includes('guardian name') || h.includes('parent name'));
-        const gPhoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('contact'));
-        
-        if (nameIdx === -1 || rollIdx === -1 || gNameIdx === -1 || gPhoneIdx === -1) {
-          throw new Error("Missing required columns. Please check the template.");
-        }
-        
-        const students = lines.slice(1).map(line => {
-          const cols = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.trim().replace(/^"|"$/g, ''));
-          return {
-            name: cols[nameIdx] || '',
-            rollNumber: cols[rollIdx] || '',
-            guardianName: cols[gNameIdx] || '',
-            guardianPhone: cols[gPhoneIdx] || ''
-          };
-        }).filter(s => s.name && s.rollNumber);
-        
-        const res = await api(`/schools/${schoolId}/students/bulk`, { method: 'POST', body: students });
-        resolve(res);
-      } catch (err: any) {
-        reject(new ApiError(err.message, 400));
-      }
-    };
-    reader.onerror = () => reject(new ApiError("File read error", 400));
-    reader.readAsText(file);
-  });
+  return api(`/schools/${schoolId}/students/bulk`, { method: 'POST', body: preview.payload });
 };
