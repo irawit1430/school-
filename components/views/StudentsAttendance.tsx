@@ -1,653 +1,437 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable @next/next/no-img-element */
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
-import { fetchStudents, fetchTodayAttendance, createStudent, importStudentsCSV, fetchStats, fetchRoutes, assignStudentToStop, fetchNotifications, sendMessageToParent, apiErrorMessage } from '@/lib/api';
-import { Download, Plus, Upload, Eye, Mail, AlertTriangle, Clock, Info, Search } from 'lucide-react';
-import { clsx } from 'clsx';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { clsx } from 'clsx';
+import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, sendMessageToParent, updateStudentMapping } from '@/lib/api';
+import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
+import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
 import { SummaryCards } from './students/SummaryCards';
-import { notificationSeverity } from '@/lib/notifications';
 import { AddStudentModal } from './students/AddStudentModal';
 import { ImportStudentsModal } from './students/ImportStudentsModal';
 import { CredentialsPopup } from './students/CredentialsPopup';
 import { AssignBusModal } from './students/AssignBusModal';
 import { StudentProfileModal } from './students/StudentProfileModal';
 import { MessageParentModal } from './students/MessageParentModal';
+import { useStudentsData } from './students/useStudentsData';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { avatarFor } from '@/lib/avatar';
+
+type Route = { id: string; name: string; stops?: { id: string; name: string; stopTime?: string }[] };
+const emptyStudentForm = { rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' };
+const tabs: { label: string; status?: StudentStatus }[] = [
+  { label: 'All Students' }, { label: 'Currently Boarded', status: 'Boarded' },
+  { label: 'Dropped Off', status: 'Dropped off' }, { label: 'Did Not Board', status: 'Did not board' },
+  { label: 'On Leave', status: 'On leave' }, { label: 'Not Scanned', status: 'Not scanned' },
+];
+const secondaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
+const primaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50';
+
+/**
+ * Two of the mapping endpoints' failures mean something specific to the person at the
+ * desk and the server's own wording doesn't say it. Everything else it writes is already
+ * written for humans, so pass it straight through.
+ */
+const mappingErrorMessage = (error: unknown): string => {
+  if (error instanceof ApiError) {
+    if (error.status === 404) return 'This student was changed somewhere else and this assignment no longer exists. The roster is being refreshed.';
+    if (error.status === 409 && error.data?.code === 'MAPPING_EXISTS') {
+      return 'This student is already assigned to that stop. Choose a different stop, or change that other assignment instead.';
+    }
+  }
+  return apiErrorMessage(error, 'Could not save this route and stop.');
+};
 
 export function StudentsAttendance() {
-  const [studentsData, setStudentsData] = useState<any[]>([]);
-  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
-  const [routes, setRoutes] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const data = useStudentsData();
+  const externalQuery = useSearchParams().get('q') || '';
+  const [previousQuery, setPreviousQuery] = useState(externalQuery);
+  const [searchQuery, setSearchQuery] = useState(externalQuery);
+  const [activeTab, setActiveTab] = useState('All Students');
+  const [gradeFilter, setGradeFilter] = useState('');
+  const [routeFilter, setRouteFilter] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(8);
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' });
+  const [formData, setFormData] = useState({ ...emptyStudentForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [credentialsPopup, setCredentialsPopup] = useState<any>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [credentials, setCredentials] = useState<{ data: unknown; operation: 'create' | 'import'; count?: number } | null>(null);
 
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignStudent, setAssignStudent] = useState<any>(null);
-  const [assignFormData, setAssignFormData] = useState({ routeId: '', routeStopId: '' });
+  const [assignStudent, setAssignStudent] = useState<ProcessedStudent | null>(null);
+  const [assignFormData, setAssignFormData] = useState({ routeId: '', routeStopId: '', mappingId: '' });
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [routesLoading, setRoutesLoading] = useState(false);
+  const [routesError, setRoutesError] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+  // A successful create must stay blocked even if the following roster refresh fails.
+  const [createdAssignmentIds, setCreatedAssignmentIds] = useState<Set<string>>(() => new Set());
+  const routeRequest = useRef(0);
 
-  const [viewStudent, setViewStudent] = useState<any>(null);
-  
-  const [messageStudent, setMessageStudent] = useState<any>(null);
+  const [viewStudentId, setViewStudentId] = useState<string | null>(null);
+  const [messageStudent, setMessageStudent] = useState<ProcessedStudent | null>(null);
   const [messageForm, setMessageForm] = useState({ subject: '', body: '' });
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [isMessageSubmitting, setIsMessageSubmitting] = useState(false);
+  const writing = useRef(false);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  // Global search deep-links here as /students?q=<name>; same pattern the map uses.
-  const [searchQuery, setSearchQuery] = useState(() => {
-    if (typeof window === 'undefined') return '';
-    return new URLSearchParams(window.location.search).get('q') || '';
-  });
-  const [activeTab, setActiveTab] = useState('All Students');
-  const itemsPerPage = 8;
-
-  const loadData = () => {
-    setLoading(true);
-    setError(null);
-    // Summary only: this page needs route *names* for the Assign Bus dropdown, and the
-    // full payload carries every stop and every encoded polyline. The stops are fetched
-    // on demand when that dialog actually opens — see handleOpenAssign.
-    fetchRoutes({ summary: true }).then(setRoutes).catch(err => console.warn('Failed to load routes', err));
-    fetchNotifications().then(setNotifications).catch(err => console.warn('Failed to load alerts', err));
-
-    Promise.all([fetchStudents(), fetchTodayAttendance(), fetchStats()])
-      .then(([studentsRes, attendanceRes, statsRes]) => {
-        setStudentsData(studentsRes);
-        setAttendanceLogs(attendanceRes);
-        setStats(statsRes);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load students/attendance:', err);
-        setError('Failed to load data. Please refresh the page.');
-        toast.error(apiErrorMessage(err, 'Failed to load students data.'));
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  // The dialog needs each route's stops, which the summary payload omits. Fetched here
-  // rather than on page load, so browsing students never pays for polylines — and only
-  // once, since the full list is kept after the first open.
-  const [fullRoutesLoaded, setFullRoutesLoaded] = useState(false);
-
-  const handleOpenAssign = (student: any) => {
-    setAssignStudent(student);
-    setAssignFormData({ routeId: '', routeStopId: '' });
-    setIsAssignModalOpen(true);
-    if (!fullRoutesLoaded) {
-      fetchRoutes()
-        .then(full => { setRoutes(full); setFullRoutesLoaded(true); })
-        .catch(err => toast.error(apiErrorMessage(err, 'Could not load stops for these routes.')));
-    }
-  };
-
-  const handleAssignSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!assignStudent) return;
-    
-    setIsAssignSubmitting(true);
-    try {
-      await assignStudentToStop({
-        studentId: assignStudent.id,
-        routeStopId: assignFormData.routeStopId
-      });
-      toast.success('Pickup route and stop saved.');
-      setIsAssignModalOpen(false);
-      loadData();
-    } catch (err) {
-      console.error('Failed to assign student', err);
-      toast.error(apiErrorMessage(err, 'Failed to save pickup route and stop.'));
-    } finally {
-      setIsAssignSubmitting(false);
-    }
-  };
-
-  const handleMessageSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!messageStudent) return;
-    setIsMessageSubmitting(true);
-    
-    try {
-      // Call actual backend API
-      await sendMessageToParent(messageStudent.parentId, messageForm.subject, messageForm.body);
-      
-      setMessageStudent(null);
-      setMessageForm({ subject: '', body: '' });
-      toast.success('Message sent to parent successfully!');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to send message');
-    } finally {
-      setIsMessageSubmitting(false);
-    }
-  };
-
-  const handleOpenCreate = () => {
-    setFormData({ rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' });
-    setIsModalOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const payload = {
-        rfidTag: formData.rfidTag,
-        name: formData.name,
-        grade: formData.grade || undefined,
-        parentEmail: formData.parentEmail || undefined,
-        parentName: formData.parentName || undefined,
-        guardianPhone: formData.guardianPhone || undefined
-      };
-      
-      const res = await createStudent(payload);
-      toast.success('Student registered successfully!');
-      setIsModalOpen(false);
-      loadData();
-      
-      if (res.parentCredentials) {
-        setCredentialsPopup(res.parentCredentials);
-      }
-    } catch (err) {
-      console.error('Failed to save student', err);
-      toast.error(apiErrorMessage(err, 'Failed to register student.'));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleImportCSV = async (file: File) => {
-    try {
-      setIsSubmitting(true);
-      const res = await importStudentsCSV(file);
-      toast.success(res.message || 'Students imported successfully!');
-      setIsImportModalOpen(false);
-      loadData();
-      if (res.parentCredentials && Array.isArray(res.parentCredentials) && res.parentCredentials.length > 0) {
-        setCredentialsPopup(res.parentCredentials);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to import students');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleExportCSV = () => {
-    if (studentsData.length === 0) return toast.error('No data to export');
-    
-    const headers = ['Name', 'Grade', 'RFID Tag', 'Assigned Route', 'Status', 'Last Check-In'];
-    const escape = (v: any) => {
-      const s = String(v ?? '').replace(/"/g, '""');
-      return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
-    };
-    const rows = allProcessedStudents.map(s => [
-      escape(s.name), 
-      escape(s.grade || ''), 
-      escape(s.tag), 
-      escape(s.route), 
-      escape(s.status), 
-      escape(s.time)
-    ]);
-    const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `students_attendance_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Export downloaded!');
-  };
-
-  // ─── DATA PROCESSING (Memoized) ─────────────────────────
-  //
-  // boardingStatus is 'BOARDED' | 'ALIGHTED' | null. Null means no scan yet today —
-  // genuinely unknown, NOT absent. A child who has not boarded at 06:40 and a child who
-  // failed to board at 08:20 are the same null, and calling either one "Absent" is a
-  // claim the data does not support. (This column used to be the hardcoded string
-  // 'Absent' for every student in every school, so it was never true at all.)
-  const { allProcessedStudents, totalStudents, boardedCount, alightedCount, notScannedCount, noShowCount, onLeaveCount } = useMemo(() => {
-    let bCount = 0;
-    let aCount = 0;
-    let unknownCount = 0;
-    let noShow = 0;
-    let leave = 0;
-
-    const byStudent = new Map<string, any>();
-    for (const log of attendanceLogs) {
-      const key = log.studentId || log.student?.id;
-      if (key) byStudent.set(key, log);
-    }
-
-    const processed = studentsData.map(s => {
-      const todayLog = byStudent.get(s.id);
-
-      // Prefer the row's own summary; fall back to today's log for older payloads.
-      const raw = s.boardingStatus ?? todayLog?.type ?? null;
-      // Approved leave is its own fact, not a kind of absence. A child the school
-      // already excused must never read the same as one who failed to board — that
-      // conflation is what the "Leave & Absences" tab used to do while never once
-      // loading a leave.
-      const status = raw === 'BOARDED' ? 'Boarded'
-                   : raw === 'ALIGHTED' ? 'Dropped off'
-                   : raw === 'NO_SHOW' ? 'Did not board'
-                   : s.onLeave ? 'On leave'
-                   : 'Not scanned';
-
-      // Rendered in the viewer's timezone, while the server scopes "today" to its own
-      // (TZ=Asia/Kolkata). Those agree for an admin sitting in the school, which is
-      // every real user — but they are two assumptions, not one. If the platform ever
-      // takes a school outside IST, this formatting moves with the server's day
-      // boundary and the Run scheduler's weekday patterns, as one change.
-      const stamp = s.lastCheckIn || todayLog?.timestamp || null;
-      const parsed = stamp ? new Date(stamp) : null;
-      const time = parsed && !isNaN(parsed.getTime())
-        ? parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : '—';
-
-      const routeName = s.assignedRoute || s.routeMappings?.[0]?.routeStop?.route?.name || 'Unassigned';
-
-      if (status === 'Boarded') bCount++;
-      else if (status === 'Dropped off') aCount++;
-      else if (status === 'Did not board') noShow++;
-      else if (status === 'On leave') leave++;
-      else unknownCount++;
-
-      return {
-        id: s.id,
-        name: s.name,
-        tag: s.rfidTag || 'N/A',
-        grade: s.grade,
-        route: routeName,
-        status,
-        onLeave: !!s.onLeave,
-        parentId: s.parentId || s.parent?.id,
-        // parentPhone is the primary number; guardianPhone is the schema's own fallback
-        // for families with no parent account.
-        guardianPhone: s.parentPhone || s.guardianPhone || '',
-        parentName: s.parentName || '',
-        parentEmail: s.parentEmail || s.parent?.email || '',
-        time,
-        avatar: s.photoUrl || avatarFor(s.name)
-      };
-    });
-
-    return {
-      allProcessedStudents: processed,
-      totalStudents: stats?.totalStudents ?? studentsData.length ?? 0,
-      boardedCount: bCount,
-      alightedCount: aCount,
-      notScannedCount: unknownCount,
-      noShowCount: noShow,
-      onLeaveCount: leave
-    };
-  }, [studentsData, attendanceLogs, stats]);
-
-  const filteredStudents = useMemo(() => {
-    return allProcessedStudents.filter(student => {
-      // 1. Tab Filtering
-      if (activeTab === 'Currently Boarded' && student.status !== 'Boarded') return false;
-      if (activeTab === 'Not Scanned' && student.status !== 'Not scanned') return false;
-      if (activeTab === 'Did Not Board' && student.status !== 'Did not board') return false;
-
-      // 2. Search Filtering
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        return (
-          String(student.name || '').toLowerCase().includes(query) ||
-          String(student.tag || '').toLowerCase().includes(query) ||
-          String(student.route || '').toLowerCase().includes(query)
-        );
-      }
-      return true;
-    });
-  }, [allProcessedStudents, activeTab, searchQuery]);
-
-  // Reset page when filter changes
-  useEffect(() => {
+  if (previousQuery !== externalQuery) {
+    setPreviousQuery(externalQuery);
+    setSearchQuery(externalQuery);
+    setActiveTab('All Students');
+    setGradeFilter('');
+    setRouteFilter('');
     setCurrentPage(1);
-  }, [activeTab, searchQuery]);
-
-  // "Currently boarded" means on a bus right now — a child who has been dropped off is
-  // not on one, so they are counted separately rather than folded in.
-  const presentCount = boardedCount;
-  const dynamicAttendanceData = [
-    { name: 'Boarded', value: boardedCount, color: '#3b82f6' },
-    { name: 'Dropped off', value: alightedCount, color: '#10b981' },
-    { name: 'Did not board', value: noShowCount, color: '#ef4444' },
-    { name: 'On leave', value: onLeaveCount, color: '#a855f7' },
-    { name: 'Not scanned', value: notScannedCount, color: '#94a3b8' }
-  ].filter(d => d.value > 0);
-  const boardedPercentage = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
-
-  if (loading) {
-    return (
-      <div className="p-6 space-y-6">
-        <div className="flex justify-between items-start mb-6">
-          <div><Skeleton className="h-6 w-48 mb-2"/><Skeleton className="h-4 w-64"/></div>
-          <div className="flex gap-3"><Skeleton className="h-10 w-48"/><Skeleton className="h-10 w-40"/></div>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Skeleton className="h-32 col-span-1 md:col-span-2 rounded-xl" />
-          <Skeleton className="h-32 rounded-xl" />
-          <Skeleton className="h-32 rounded-xl" />
-        </div>
-        <Skeleton className="h-96 w-full rounded-xl" />
-      </div>
-    );
   }
+  useEffect(() => () => { routeRequest.current++; }, []);
 
-  if (error) {
-    return (
-      <div className="p-6 flex flex-col items-center justify-center h-[60vh]">
-        <div className="text-red-500 mb-4"><AlertTriangle size={48} /></div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
-        <p className="text-slate-500 mb-6">{error}</p>
-        <button onClick={loadData} className="px-6 py-2 bg-orange-600 text-white font-semibold rounded-lg hover:bg-orange-700 transition-colors">
-          Retry
-        </button>
-      </div>
-    );
-  }
+  // Keep an old snapshot associated with its original school day if refresh fails.
+  const students = useMemo(() => processStudents(data.students, data.attendance, data.lastUpdated || new Date()),
+    [data.students, data.attendance, data.lastUpdated]);
+  const counts = useMemo(() => countStudentStatuses(students), [students]);
+  const totalStudents = students.length;
+  const boardedPercentage = totalStudents ? Math.round(counts.Boarded / totalStudents * 100) : 0;
+  const reportDate = attendanceDate(data.lastUpdated || new Date());
+  const grades = [...new Set(students.map(student => student.grade).filter(Boolean))].sort();
+  const routeNames = [...new Set(students.map(student => student.route))].sort();
+  const filteredStudents = useMemo(() => {
+    const status = tabs.find(tab => tab.label === activeTab)?.status;
+    const query = searchQuery.trim().toLocaleLowerCase();
+    return students.filter(student => (!status || student.status === status)
+      && (!gradeFilter || student.grade === gradeFilter)
+      && (!routeFilter || student.route === routeFilter)
+      && (!query || [student.name, student.tag, student.route, student.stopName].some(value => value.toLocaleLowerCase().includes(query))))
+      .sort((a, b) => {
+        const field = sortBy as 'name' | 'grade' | 'route';
+        return String(a[field] || '').localeCompare(String(b[field] || ''), undefined, { numeric: true }) || a.name.localeCompare(b.name);
+      });
+  }, [students, activeTab, searchQuery, gradeFilter, routeFilter, sortBy]);
+  const pageCount = Math.max(1, Math.ceil(filteredStudents.length / itemsPerPage));
+  const page = Math.min(currentPage, pageCount);
+  if (currentPage !== page) setCurrentPage(page);
+  const visibleStudents = filteredStudents.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  const hasFilters = !!(searchQuery.trim() || gradeFilter || routeFilter || activeTab !== 'All Students');
+
+  const clearFilters = () => {
+    setSearchQuery(''); setGradeFilter(''); setRouteFilter(''); setActiveTab('All Students'); setCurrentPage(1);
+  };
+  const openCreate = () => {
+    if (writing.current) return;
+    setFormData({ ...emptyStudentForm }); setCreateError(null); setIsModalOpen(true);
+  };
+  const loadRoutes = async () => {
+    const request = ++routeRequest.current;
+    setRoutesLoading(true); setRoutesError(null);
+    try {
+      const full = await fetchRoutes();
+      if (request === routeRequest.current) setRoutes(full);
+    } catch (error) {
+      if (request === routeRequest.current) setRoutesError(apiErrorMessage(error, 'Could not load routes and stops.'));
+    } finally {
+      if (request === routeRequest.current) setRoutesLoading(false);
+    }
+  };
+  const openAssign = (student: ProcessedStudent) => {
+    // Without a mapping id there is nothing to change, and creating a second mapping for
+    // an already-assigned child is what puts them on two driver rosters. That applies to
+    // an assignment saved this session and to a payload that carries only the flattened
+    // fields, which name the stop but not the row.
+    if (writing.current || (!student.mappings.length
+      && (student.hasAssignment || createdAssignmentIds.has(student.id)))) return;
+    const mapping = student.mappings[0] ?? null;
+    setAssignStudent(student); setAssignError(null);
+    setAssignFormData({
+      mappingId: mapping?.id ?? '',
+      routeId: mapping?.routeId ?? student.routeId ?? '',
+      routeStopId: mapping?.routeStopId ?? student.routeStopId ?? '',
+    });
+    void loadRoutes();
+  };
+  const closeAssign = () => { if (!writing.current) { routeRequest.current++; setAssignStudent(null); } };
+  const handleAssignSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!assignStudent || writing.current || routesLoading || routesError) return;
+    const latestStudent = students.find(student => student.id === assignStudent.id);
+    if (!latestStudent) {
+      setAssignError('This student is no longer in the roster. Refresh to see the current list.');
+      return;
+    }
+    const mappingId = assignFormData.mappingId;
+    // Re-checked against the latest roster, not the snapshot the dialog opened from:
+    // polling can reveal an assignment made elsewhere while this dialog sat open.
+    if (!mappingId && (latestStudent.hasAssignment || createdAssignmentIds.has(assignStudent.id))) {
+      setAssignError('This student already has a route assignment. Refresh the roster to change it.');
+      return;
+    }
+    const route = routes.find(item => item.id === assignFormData.routeId);
+    const stop = route?.stops?.find(item => item.id === assignFormData.routeStopId);
+    if (!stop) { setAssignError('Select a route and one of its pickup stops.'); return; }
+    writing.current = true; setIsAssignSubmitting(true); setAssignError(null);
+    try {
+      if (mappingId) {
+        // One call: a failure leaves the existing mapping exactly as it was. `direction`
+        // is omitted so a drop-off-only mapping is not silently widened to both legs.
+        await updateStudentMapping(mappingId, { routeStopId: stop.id });
+        toast.success('Moved to ' + route!.name + ' · ' + stop.name + '.');
+      } else {
+        await assignStudentToStop({ studentId: assignStudent.id, routeStopId: stop.id });
+        setCreatedAssignmentIds(previous => new Set(previous).add(assignStudent.id));
+        toast.success('Saved ' + route!.name + ' · ' + stop.name + '.');
+      }
+      setAssignStudent(null);
+      void data.refresh(true, true);
+    } catch (error) {
+      setAssignError(mappingErrorMessage(error));
+      // A 404 means someone else changed this student while the dialog was open; the
+      // roster on screen is already stale, so go and get the real state.
+      if (error instanceof ApiError && error.status === 404) void data.refresh(true, true);
+    } finally { writing.current = false; setIsAssignSubmitting(false); }
+  };
+  const openMessage = (student: ProcessedStudent) => {
+    if (writing.current || !student.parentId) return;
+    setMessageForm({ subject: '', body: '' }); setMessageError(null); setMessageStudent(student);
+  };
+  const closeMessage = () => {
+    if (writing.current) return;
+    setMessageStudent(null); setMessageForm({ subject: '', body: '' }); setMessageError(null);
+  };
+  const handleMessageSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (writing.current || !messageStudent?.parentId) return;
+    const subject = messageForm.subject.trim(), body = messageForm.body.trim();
+    if (!subject || !body) { setMessageError('Enter a subject and message.'); return; }
+    writing.current = true; setIsMessageSubmitting(true); setMessageError(null);
+    try {
+      await sendMessageToParent(messageStudent.parentId, subject, body);
+      setMessageStudent(null); setMessageForm({ subject: '', body: '' });
+      toast.success('Message sent to parent.');
+    } catch (error) { setMessageError(apiErrorMessage(error, 'Could not send this message.')); }
+    finally { writing.current = false; setIsMessageSubmitting(false); }
+  };
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (writing.current) return;
+    const name = formData.name.trim(), parentName = formData.parentName.trim(), parentEmail = formData.parentEmail.trim();
+    if (!name || !parentName || !parentEmail) { setCreateError('Enter the student name, parent name, and parent email.'); return; }
+    writing.current = true; setIsSubmitting(true); setCreateError(null);
+    try {
+      const result = await createStudent({ name, parentName, parentEmail,
+        rfidTag: formData.rfidTag.trim() || undefined, grade: formData.grade.trim() || undefined,
+        guardianPhone: formData.guardianPhone.trim() || undefined });
+      setIsModalOpen(false);
+      if (result.parentCredentials) setCredentials({ data: result.parentCredentials, operation: 'create', count: 1 });
+      toast.success('Student registered successfully!');
+      void data.refresh(true, true);
+    } catch (error) { setCreateError(apiErrorMessage(error, 'Could not register this student.')); }
+    finally { writing.current = false; setIsSubmitting(false); }
+  };
+  const handleImportCSV = async (file: File) => {
+    if (writing.current) return;
+    writing.current = true; setIsSubmitting(true); setImportError(null);
+    try {
+      const result = await importStudentsCSV(file);
+      setIsImportModalOpen(false);
+      if (Array.isArray(result.parentCredentials) && result.parentCredentials.length) {
+        const count = typeof result.importedCount === 'number' ? result.importedCount : undefined;
+        setCredentials({ data: result.parentCredentials, operation: 'import', count });
+      }
+      toast.success(result.message || 'Student import completed.');
+      void data.refresh(true, true);
+    } catch (error) { setImportError(apiErrorMessage(error, 'Could not import students.')); }
+    finally { writing.current = false; setIsSubmitting(false); }
+  };
+  const exportCSV = (scope: 'all' | 'filtered') => {
+    const rows = scope === 'all' ? students : filteredStudents;
+    if (!rows.length) return;
+    const cell = (value: unknown) => {
+      let text = String(value ?? '');
+      if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    };
+    const headers = ['Attendance Date (IST)', 'Name', 'Grade', 'RFID Tag', 'Assigned Route', 'Pickup Stop', 'Status', 'Last Event (IST)'];
+    const content = [headers, ...rows.map(student => [reportDate, student.name, student.grade, student.tag,
+      student.route, student.stopName, student.status, student.time])].map(row => row.map(cell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url; link.download = 'students_attendance_' + reportDate + '_' + scope + '.csv';
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    toast.success('Attendance report downloaded.');
+  };
+
+  const sortedAlerts = [...data.notifications].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const visibleAlerts = showAllAlerts ? sortedAlerts : sortedAlerts.slice(0, 4);
+  const viewStudent = students.find(student => student.id === viewStudentId) || null;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Students & Attendance</h2>
-          <p className="text-slate-500 mt-1">Monitor real-time boarding status and daily attendance records.</p>
+    <div className="space-y-5 p-4 sm:p-6">
+      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-slate-900">Students & Attendance</h1>
+          <p className="mt-1 text-sm text-slate-600">Boarding activity and pickup assignments for {reportDate} (IST).</p>
+          <p className="mt-1 text-xs text-slate-500" role="status">
+            {data.lastUpdated ? 'Updated ' + formatSchoolTime(data.lastUpdated.toISOString()) + ' IST · Refreshes every 30 seconds while visible' : 'Loading the latest attendance…'}
+          </p>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 px-4 py-2.5 border border-slate-200 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          >
-            <Download size={16} /> Export Attendance Report
+        <div className="flex flex-wrap gap-2">
+          <button className={secondaryButton} onClick={() => void data.refresh(true, true)} disabled={data.refreshing} aria-label="Refresh">
+            <RefreshCw size={16} className={data.refreshing ? 'animate-spin' : ''} />{data.refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
-          <button 
-            onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 px-4 py-2.5 border border-slate-200 rounded-lg transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-          >
-            <Upload size={16} /> Bulk Import
-          </button>
-          <button 
-            onClick={handleOpenCreate}
-            className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
-          >
-            <Plus size={18} /> Add New Student
-          </button>
+          <button className={secondaryButton} onClick={() => exportCSV('all')} disabled={!students.length}><Download size={16} />Export all</button>
+          <button className={secondaryButton} onClick={() => { setImportError(null); setIsImportModalOpen(true); }}><Upload size={16} />Bulk Import</button>
+          <button className={primaryButton} onClick={openCreate}><Plus size={16} />Add New Student</button>
         </div>
       </div>
 
-      <SummaryCards 
-        totalStudents={totalStudents}
-        stats={stats}
-        presentCount={presentCount}
-        boardedPercentage={boardedPercentage}
-        notScannedCount={notScannedCount}
-        dynamicAttendanceData={dynamicAttendanceData}
-      />
+      {data.error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <AlertTriangle size={18} /><span>{data.error} {data.lastUpdated ? 'Showing the last loaded roster and attendance.' : 'The student roster is unavailable.'}</span>
+        <button className={secondaryButton} disabled={data.refreshing} onClick={() => void data.refresh(true, true)}>Retry</button>
+      </div>}
+      {data.statsError && <p role="alert" className="text-sm text-amber-800">{data.statsError} Late-arrival statistics are unavailable.</p>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          {/* Tabs & Search */}
-          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-             <div className="flex items-center gap-6 overflow-x-auto">
-               {['All Students', 'Currently Boarded', 'Did Not Board', 'Not Scanned'].map((tab) => (
-                  <button 
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={clsx(
-                      "text-sm font-semibold pb-4 -mb-4 border-b-2 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-orange-500 rounded",
-                      activeTab === tab ? "text-orange-600 border-orange-600" : "text-slate-500 border-transparent hover:text-slate-900"
-                    )}
-                  >
-                    {tab}
-                  </button>
-                ))}
-             </div>
-             <div className="relative w-full sm:w-64">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-               <input 
-                 type="text"
-                 placeholder="Search students..."
-                 value={searchQuery}
-                 onChange={(e) => setSearchQuery(e.target.value)}
-                 className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-shadow"
-               />
-             </div>
-          </div>
-          <div className="overflow-x-auto p-2 flex-1">
-            <table className="w-full text-left text-sm">
-              <thead className="text-slate-500 font-semibold text-xs tracking-wider">
-                <tr>
-                  <th className="px-4 py-3">Student Name</th>
-                  <th className="px-4 py-3">Grade</th>
-                  <th className="px-4 py-3">Assigned Route</th>
-                  <th className="px-4 py-3">Boarding Status</th>
-                  <th className="px-4 py-3">Last Check-In</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filteredStudents.length > 0 ? (
-                  filteredStudents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((student: any) => (
-                    <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <img src={student.avatar} alt={student.name} className="w-10 h-10 rounded-full bg-slate-200 object-cover" />
-                          <div>
-                            <p className="font-bold text-slate-900">{student.name}</p>
-                            <p className="text-[10px] text-slate-500 font-mono">ID: {student.tag}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-600">{student.grade}</td>
-                      <td className="px-4 py-3 font-medium text-slate-700">{student.route}</td>
-                      <td className="px-4 py-3">
-                        <span className={clsx(
-                          "px-2.5 py-1 rounded text-[11px] font-bold uppercase tracking-wider inline-flex items-center border",
-                          student.status === 'Boarded' && "bg-emerald-50 text-emerald-700 border-emerald-100",
-                          student.status === 'Not scanned' && "bg-slate-100 text-slate-600 border-slate-200",
-                          student.status === 'Did not board' && "bg-red-50 text-red-700 border-red-100",
-                          student.status === 'On leave' && "bg-purple-50 text-purple-700 border-purple-100",
-                          student.status === 'Dropped off' && "bg-orange-50 text-orange-700 border-orange-100"
-                        )}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-600">{student.time}</td>
-                      <td className="px-4 py-3 text-right">
-                         <div className="flex items-center justify-end gap-2 text-slate-500">
-                           {student.route === 'Unassigned' && (
-                             <button 
-                               onClick={() => handleOpenAssign(student)}
-                               className="text-xs font-semibold text-orange-600 hover:text-orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors mr-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                             >
-                               Assign Route & Stop
-                             </button>
-                           )}
-                           <button 
-                             onClick={() => setViewStudent(student)}
-                             aria-label="View Student" 
-                             className="p-1.5 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
-                           >
-                             <Eye size={18} />
-                           </button>
-                           <button 
-                             onClick={() => setMessageStudent(student)}
-                             aria-label="Message Parent" 
-                             className="p-1.5 hover:text-orange-600 hover:bg-orange-50 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500"
-                           >
-                             <Mail size={18} />
-                           </button>
-                         </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
-                      No students found matching your criteria.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="p-4 border-t border-slate-50 flex items-center justify-between text-sm text-slate-500 mt-auto">
-            <span>Showing {filteredStudents.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} to {Math.min(currentPage * itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students</span>
-            <div className="flex gap-1">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500">&lt;</button>
-              <button onClick={() => setCurrentPage(p => Math.min(Math.ceil(filteredStudents.length / itemsPerPage), p + 1))} disabled={currentPage >= Math.ceil(filteredStudents.length / itemsPerPage) || filteredStudents.length === 0} className="w-8 h-8 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500">&gt;</button>
+      {data.loading ? <div className="space-y-4" aria-label="Loading students" aria-busy="true">
+        <div className="grid gap-4 sm:grid-cols-2"><Skeleton className="h-28 rounded-xl" /><Skeleton className="h-28 rounded-xl" /></div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div> : data.lastUpdated && <>
+        <SummaryCards totalStudents={totalStudents} stats={data.stats} statsError={data.statsError}
+          presentCount={counts.Boarded} boardedPercentage={boardedPercentage} notScannedCount={counts['Not scanned']} />
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+          <section aria-label="Student roster" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="space-y-4 border-b border-slate-100 p-4">
+              <div className="flex flex-wrap gap-2" aria-label="Boarding status filters">
+                {tabs.map(tab => <button key={tab.label} type="button" aria-label={tab.label} aria-pressed={activeTab === tab.label}
+                  onClick={() => { setActiveTab(tab.label); setCurrentPage(1); }}
+                  className={clsx('rounded-lg border px-3 py-2 text-xs font-semibold', activeTab === tab.label
+                    ? 'border-primary bg-primary-soft text-primary' : 'border-slate-200 text-slate-600 hover:bg-slate-50')}>
+                  {tab.label} <span className="ml-1" aria-hidden="true">{tab.status ? counts[tab.status] : totalStudents}</span>
+                </button>)}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="relative">
+                  <label htmlFor="student-search" className="sr-only">Search students by name, RFID, route or stop</label>
+                  <Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400" />
+                  <input id="student-search" type="search" value={searchQuery} placeholder="Search students, RFID, route or stop…"
+                    onChange={event => { setSearchQuery(event.target.value); setCurrentPage(1); }}
+                    className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="sr-only" htmlFor="student-grade">Filter by grade</label>
+                  <select id="student-grade" value={gradeFilter} onChange={event => { setGradeFilter(event.target.value); setCurrentPage(1); }} className="min-w-0 rounded-lg border border-slate-200 px-2 py-2 text-sm">
+                    <option value="">All grades</option>{grades.map(grade => <option key={grade} value={grade}>{grade}</option>)}
+                  </select>
+                  <label className="sr-only" htmlFor="student-route">Filter by route</label>
+                  <select id="student-route" value={routeFilter} onChange={event => { setRouteFilter(event.target.value); setCurrentPage(1); }} className="min-w-0 rounded-lg border border-slate-200 px-2 py-2 text-sm">
+                    <option value="">All routes</option>{routeNames.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                <div className="flex items-center gap-2"><label htmlFor="student-sort">Sort by</label>
+                  <select id="student-sort" value={sortBy} onChange={event => { setSortBy(event.target.value); setCurrentPage(1); }} className="rounded border border-slate-200 p-1.5">
+                    <option value="name">Name</option><option value="grade">Grade</option><option value="route">Route</option>
+                  </select>
+                </div>
+                {hasFilters && <div className="flex flex-wrap gap-3"><button onClick={clearFilters} className="font-semibold text-primary underline">Clear filters</button>
+                  <button disabled={!filteredStudents.length} onClick={() => exportCSV('filtered')} className="font-semibold text-primary underline disabled:opacity-40">Export filtered ({filteredStudents.length})</button>
+                </div>}
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 mb-6">Attendance Summary</h3>
-            
-            {/* CSS Donut Chart */}
-            {(() => {
-              const bPct = Math.round((boardedCount / totalStudents) * 100) || 0;
-              const sPct = Math.round((alightedCount / totalStudents) * 100) || 0;
-              const donutStyle = { background: `conic-gradient(#3b82f6 ${bPct}%, #10b981 0 ${bPct + sPct}%, #94a3b8 0)` };
-              return (
-                <div className="flex justify-center mb-6">
-                  <div className="w-40 h-40 rounded-full flex items-center justify-center" style={donutStyle}>
-                    <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center">
-                      <span className="text-3xl font-bold text-slate-900">{boardedPercentage}%</span>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Boarded</span>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <caption className="sr-only">Students and their attendance on {reportDate}</caption>
+                <thead className="bg-slate-50 text-xs text-slate-600"><tr>
+                  {['Student Name', 'Grade', 'Pickup Route & Stop', 'Boarding Status', 'Last Event', 'Actions'].map(label => <th scope="col" key={label} className="px-4 py-3">{label}</th>)}
+                </tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {visibleStudents.map(student => <tr key={student.id} className="align-top hover:bg-slate-50">
+                    <td className="px-4 py-3"><div className="flex items-center gap-3">
+                      <img src={student.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                      <div className="min-w-0"><p className="font-semibold text-slate-900">{student.name}</p><p className="break-all text-xs text-slate-500">RFID: {student.tag}</p></div>
+                    </div></td>
+                    <td className="px-4 py-3">{student.grade || '—'}</td>
+                    <td className="px-4 py-3"><p className="font-medium">{student.route}</p><p className="mt-1 text-xs text-slate-500">{student.stopName || (student.route !== 'Unassigned' ? 'Stop details unavailable' : 'No pickup stop')}{student.stopTime ? ' · ' + student.stopTime : ''}</p></td>
+                    <td className="px-4 py-3"><span className={clsx('inline-flex rounded border px-2 py-1 text-xs font-semibold', STUDENT_STATUS_META[student.status].className)}>{student.status}</span></td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs">{student.time}</td>
+                    <td className="px-4 py-3"><div className="flex flex-wrap items-center gap-1">
+                      {student.mappings.length
+                        ? <button onClick={() => openAssign(student)} className="rounded px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft">Change Route & Stop</button>
+                        : student.hasAssignment || createdAssignmentIds.has(student.id)
+                        ? <span className="max-w-40 text-xs text-slate-500">Refresh to change this assignment</span>
+                        : <button onClick={() => openAssign(student)} className="rounded px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft">Assign Route & Stop</button>}
+                      <button onClick={() => setViewStudentId(student.id)} aria-label={'View Student ' + student.name} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Eye size={18} /></button>
+                      <button onClick={() => openMessage(student)} disabled={!student.parentId} title={student.parentId ? 'Message parent' : 'No parent account linked. View the profile for guardian contact details.'}
+                        aria-label={'Message Parent of ' + student.name} className="rounded p-2 text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"><Mail size={18} /></button>
+                    </div></td>
+                  </tr>)}
+                  {!visibleStudents.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-600">
+                    <p className="font-semibold">{students.length ? 'No students match these filters.' : 'No students registered yet.'}</p>
+                    <p className="mt-1 text-sm">{students.length ? 'Try a different name or clear your filters.' : 'Add a student or import your roster to get started.'}</p>
+                    <div className="mt-4 flex justify-center gap-3">{students.length
+                      ? <button className={secondaryButton} onClick={clearFilters}>Clear filters</button>
+                      : <><button className={primaryButton} onClick={openCreate}>Add New Student</button><button className={secondaryButton} onClick={() => { setImportError(null); setIsImportModalOpen(true); }}>Bulk Import</button></>}
                     </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="mt-6 space-y-2">
-               {dynamicAttendanceData.map((item: any, i: number) => (
-                 <div key={i} className="flex items-center justify-between text-sm">
-                   <div className="flex items-center gap-2">
-                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
-                     <span className="font-medium text-slate-700">{item.name}</span>
-                   </div>
-                   <span className="font-bold text-slate-900">{item.value}</span>
-                 </div>
-               ))}
+                  </td></tr>}
+                </tbody>
+              </table>
             </div>
-          </div>
-
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 mb-4">Recent Alerts</h3>
-            <div className="space-y-3">
-              {notifications.length > 0 ? notifications.map((alert: any) => (
-                <div key={alert.id} className={clsx(
-                  "p-3 rounded-lg border flex gap-3",
-                   notificationSeverity(alert.type) === 'critical' ? "bg-red-50/50 border-red-100" :
-                   notificationSeverity(alert.type) === 'warning' ? "bg-amber-50/50 border-amber-100" :
-                  "bg-orange-50/50 border-orange-100"
-                )}>
-                   <div className={clsx(
-                     "mt-0.5",
-                     notificationSeverity(alert.type) === 'critical' ? "text-red-500" :
-                     notificationSeverity(alert.type) === 'warning' ? "text-amber-500" :
-                     "text-orange-500"
-                   )}>
-                     {notificationSeverity(alert.type) === 'critical' ? <AlertTriangle size={16} /> :
-                      notificationSeverity(alert.type) === 'warning' ? <Clock size={16} /> :
-                      <Info size={16} />}
-                   </div>
-                   <div>
-                     <p className={clsx(
-                       "text-sm font-bold",
-                        notificationSeverity(alert.type) === 'critical' ? "text-red-900" :
-                        notificationSeverity(alert.type) === 'warning' ? "text-amber-900" :
-                       "text-orange-900"
-                     )}>{alert.title}</p>
-                     <p className={clsx(
-                       "text-xs font-medium mt-0.5",
-                        notificationSeverity(alert.type) === 'critical' ? "text-red-700" :
-                        notificationSeverity(alert.type) === 'warning' ? "text-amber-700" :
-                       "text-orange-700"
-                     )}>{alert.message || alert.desc}</p>
-                   </div>
-                </div>
-              )) : (
-                <p className="text-sm text-slate-500 py-4 text-center">No recent alerts</p>
-              )}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-4 text-xs text-slate-600">
+              <span role="status">Showing {filteredStudents.length ? (page - 1) * itemsPerPage + 1 : 0} to {Math.min(page * itemsPerPage, filteredStudents.length)} of {filteredStudents.length} students</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="student-page-size">Rows</label><select id="student-page-size" value={itemsPerPage} onChange={event => { setItemsPerPage(Number(event.target.value)); setCurrentPage(1); }} className="rounded border p-1.5">{[8, 16, 32].map(size => <option key={size} value={size}>{size}</option>)}</select>
+                <button aria-label="Previous page" disabled={page === 1} onClick={() => setCurrentPage(page - 1)} className="rounded border p-2 disabled:opacity-40">Previous</button>
+                <span>Page {page} of {pageCount}</span>
+                <button aria-label="Next page" disabled={page === pageCount} onClick={() => setCurrentPage(page + 1)} className="rounded border p-2 disabled:opacity-40">Next</button>
+              </div>
             </div>
-          </div>
+          </section>
+          <aside className="grid min-w-0 gap-5 md:grid-cols-2 xl:grid-cols-1" aria-label="Attendance and alerts">
+            <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-slate-900">Attendance Summary</h2>
+              <p className="mt-1 text-xs text-slate-500">All students · {reportDate}</p>
+              {totalStudents ? <div className="mx-auto my-5 flex aspect-square w-40 max-w-full items-center justify-center rounded-full" style={{ background: buildAttendanceGradient(counts) }} aria-hidden="true">
+                <div className="flex aspect-square w-4/5 items-center justify-center rounded-full bg-white text-center"><div><p className="text-3xl font-bold">{boardedPercentage}%</p><p className="text-xs text-slate-600">Currently boarded</p></div></div>
+              </div> : <p className="my-5 text-sm text-slate-500">No attendance to summarize yet.</p>}
+              <dl className="space-y-2">{STUDENT_STATUSES.map(status => <div key={status} className="flex items-center justify-between gap-2 text-sm">
+                <dt className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: STUDENT_STATUS_META[status].color }} />{status}</dt><dd className="font-semibold">{counts[status]}</dd>
+              </div>)}</dl>
+            </section>
+            <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="font-bold text-slate-900">Recent Alerts</h2>
+              {data.notificationsError && <div role="alert" className="mt-3 text-sm text-amber-800"><p>{data.notificationsError}{data.notifications.length ? ' Showing the last loaded alerts.' : ''}</p><button disabled={data.refreshing} onClick={() => void data.refresh(true, true)} className="mt-2 font-semibold underline">Retry alerts</button></div>}
+              {data.notificationsLoading && <p role="status" className="mt-3 text-xs text-slate-500">Updating alerts…</p>}
+              <ul className={clsx('mt-4 space-y-3', showAllAlerts && 'max-h-96 overflow-y-auto pr-1')}>
+                {visibleAlerts.map(alert => <li key={alert.id} className={clsx('break-words rounded-lg border p-3', notificationSeverity(alert.type) === 'critical' ? 'border-red-100 bg-red-50' : notificationSeverity(alert.type) === 'warning' ? 'border-amber-100 bg-amber-50' : 'border-slate-200 bg-slate-50')}>
+                  <div className="flex flex-wrap items-start justify-between gap-1"><h3 className="text-sm font-semibold">{alert.title}</h3>{isEmergencyNotification(alert) && <span className="text-xs font-semibold">{alert.status === 'RESOLVED' ? 'Resolved' : 'Active'}</span>}</div>
+                  <p className="mt-1 text-xs text-slate-700">{alert.message}</p>
+                  <p className="mt-2 text-xs text-slate-500">{Number.isNaN(Date.parse(alert.createdAt)) ? 'Time unavailable' : new Date(alert.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' IST'}</p>
+                </li>)}
+              </ul>
+              {!data.notificationsError && !data.notificationsLoading && !data.notifications.length && <p className="py-4 text-sm text-slate-500">No recent alerts</p>}
+              {sortedAlerts.length > 4 && <button className="mt-4 text-sm font-semibold text-primary underline" aria-expanded={showAllAlerts} onClick={() => setShowAllAlerts(value => !value)}>{showAllAlerts ? 'Show fewer alerts' : 'View all loaded alerts (' + sortedAlerts.length + ')'}</button>}
+            </section>
+          </aside>
         </div>
-      </div>
+      </>}
 
-      {isAssignModalOpen && (
-        <AssignBusModal
-          onClose={() => setIsAssignModalOpen(false)}
-          onSubmit={handleAssignSubmit}
-          assignStudent={assignStudent}
-          assignFormData={assignFormData}
-          setAssignFormData={setAssignFormData}
-          isAssignSubmitting={isAssignSubmitting}
-          routes={routes}
-        />
-      )}
-
-      {isModalOpen && (
-        <AddStudentModal
-          onClose={() => setIsModalOpen(false)}
-          onSubmit={handleSubmit}
-          formData={formData}
-          setFormData={setFormData}
-          isSubmitting={isSubmitting}
-        />
-      )}
-
-      {isImportModalOpen && (
-        <ImportStudentsModal
-          onClose={() => setIsImportModalOpen(false)}
-          onImport={handleImportCSV}
-          isSubmitting={isSubmitting}
-        />
-      )}
-
-      <CredentialsPopup
-        credentialsPopup={credentialsPopup}
-        setCredentialsPopup={setCredentialsPopup}
-      />
-
-      <StudentProfileModal
-        viewStudent={viewStudent}
-        onClose={() => setViewStudent(null)}
-      />
-
-      <MessageParentModal
-        messageStudent={messageStudent}
-        onClose={() => setMessageStudent(null)}
-        onSubmit={handleMessageSubmit}
-        messageForm={messageForm}
-        setMessageForm={setMessageForm}
-        isMessageSubmitting={isMessageSubmitting}
-      />
+      {assignStudent && <AssignBusModal onClose={closeAssign} onSubmit={handleAssignSubmit} assignStudent={assignStudent}
+        assignFormData={assignFormData} setAssignFormData={setAssignFormData} isAssignSubmitting={isAssignSubmitting}
+        mappings={assignStudent.mappings}
+        routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()} error={assignError} />}
+      {isModalOpen && <AddStudentModal onClose={() => { if (!writing.current) setIsModalOpen(false); }} onSubmit={handleSubmit}
+        formData={formData} setFormData={setFormData} isSubmitting={isSubmitting} error={createError} />}
+      {isImportModalOpen && <ImportStudentsModal onClose={() => { if (!writing.current) setIsImportModalOpen(false); }}
+        onImport={handleImportCSV} isSubmitting={isSubmitting} error={importError} />}
+      <CredentialsPopup credentialsPopup={credentials?.data || null} setCredentialsPopup={() => setCredentials(null)}
+        operation={credentials?.operation} importedCount={credentials?.count} />
+      <StudentProfileModal viewStudent={viewStudent} onClose={() => setViewStudentId(null)} />
+      <MessageParentModal messageStudent={messageStudent} onClose={closeMessage} onSubmit={handleMessageSubmit}
+        messageForm={messageForm} setMessageForm={setMessageForm} isMessageSubmitting={isMessageSubmitting} error={messageError} />
     </div>
   );
 }

@@ -1,76 +1,71 @@
-import React, { useRef } from 'react';
+import React, { useId, useState } from 'react';
 import { CheckCircle, Copy } from 'lucide-react';
-import { useClickOutside } from '@/hooks/useClickOutside';
 import { toast } from 'react-hot-toast';
+import { StudentDialog } from './StudentDialog';
 
 interface CredentialsPopupProps {
   credentialsPopup: any;
   setCredentialsPopup: (val: any) => void;
+  operation?: 'create' | 'import';
+  importedCount?: number;
 }
 
-export function CredentialsPopup({ credentialsPopup, setCredentialsPopup }: CredentialsPopupProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
-  useClickOutside(modalRef, () => setCredentialsPopup(null));
-
+export function CredentialsPopup({ credentialsPopup, setCredentialsPopup, operation = 'create', importedCount }: CredentialsPopupProps) {
+  const id = useId();
+  const [isCopying, setIsCopying] = useState(false);
+  const [copyError, setCopyError] = useState('');
   if (!credentialsPopup) return null;
-
   const credentials = Array.isArray(credentialsPopup) ? credentialsPopup : [credentialsPopup];
-  const isBulk = credentials.length > 1;
+  if (!credentials.length) return null;
 
-  const handleCopyAll = () => {
-    const text = credentials.map(c => `Email: ${c.email}\nPassword: ${c.temporaryPassword}`).join('\n\n');
-    navigator.clipboard.writeText(text);
-    toast.success('Copied all credentials to clipboard');
+  const handleCopyAll = async () => {
+    if (isCopying) return;
+    setIsCopying(true);
+    setCopyError('');
+    try {
+      const text = credentials.map(cred => 'Email: ' + cred.email + '\nPassword: ' + cred.temporaryPassword).join('\n\n');
+      await navigator.clipboard.writeText(text);
+      toast.success('Copied all credentials to clipboard');
+    } catch {
+      setCopyError('Copy failed. Select and copy the fields below, or try Copy All again.');
+    } finally {
+      setIsCopying(false);
+    }
   };
+  const close = () => { if (!isCopying) { setCopyError(''); setCredentialsPopup(null); } };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-            <CheckCircle size={20} className="text-emerald-500" />
-            {isBulk ? 'Students Imported!' : 'Student Added!'}
-          </h3>
-        </div>
-        <div className="p-6 overflow-y-auto">
-          <p className="text-sm text-slate-600 mb-4">
-            {isBulk ? `${credentials.length} new parent accounts were created. Please copy these credentials and share them with the parents:` : 'A new parent account was created. Please copy these credentials and share them with the parent:'}
-          </p>
-          
-          <div className="space-y-4">
-            {credentials.map((cred: any, idx: number) => (
-              <div key={idx} className="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-2 gap-4 font-mono text-sm">
-                <div>
-                  <span className="text-slate-500 font-semibold block mb-1">Email:</span>
-                  <div className="bg-white px-3 py-2 border border-slate-200 rounded font-medium text-slate-900 truncate" title={cred.email}>
-                    {cred.email}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-500 font-semibold block mb-1">Temporary Password:</span>
-                  <div className="bg-white px-3 py-2 border border-slate-200 rounded font-medium text-slate-900">
-                    {cred.temporaryPassword}
-                  </div>
-                </div>
-              </div>
-            ))}
+    <StudentDialog
+      title={<span className="flex items-center gap-2"><CheckCircle size={20} className="shrink-0 text-emerald-600" aria-hidden="true" />{operation === 'import' ? 'Students Imported!' : 'Student Added!'}</span>}
+      onClose={close} size="lg" busy={isCopying} dismissible={false}
+    >
+      <p className="mb-4 text-sm text-slate-600">
+        {operation === 'import' && typeof importedCount === 'number' && <>{importedCount} {importedCount === 1 ? 'student was' : 'students were'} imported. </>}
+        {credentials.length} new parent {credentials.length === 1 ? 'account was' : 'accounts were'} created. Copy these temporary credentials and share them with the parents before choosing Done.
+      </p>
+      {copyError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{copyError}</p>}
+      <div className="space-y-4">
+        {credentials.map((cred: any, index: number) => (
+          <div key={index} className="grid min-w-0 grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+            <div className="min-w-0">
+              <label htmlFor={id + '-email-' + index} className="mb-1 block text-sm font-semibold text-slate-600">Email</label>
+              <textarea id={id + '-email-' + index} readOnly rows={2} value={cred.email} onFocus={event => event.currentTarget.select()}
+                className="w-full resize-none break-all rounded border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:ring-2 focus:ring-orange-500" />
+            </div>
+            <div className="min-w-0">
+              <label htmlFor={id + '-password-' + index} className="mb-1 block text-sm font-semibold text-slate-600">Temporary Password</label>
+              <textarea id={id + '-password-' + index} readOnly rows={2} value={cred.temporaryPassword} onFocus={event => event.currentTarget.select()}
+                className="w-full resize-none break-all rounded border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-900 focus:ring-2 focus:ring-orange-500" />
+            </div>
           </div>
-        </div>
-        <div className="p-6 border-t border-slate-100 flex gap-3">
-          <button 
-            onClick={handleCopyAll}
-            className="flex-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition-colors flex justify-center items-center gap-2"
-          >
-            <Copy size={16} /> Copy All
-          </button>
-          <button 
-            onClick={() => setCredentialsPopup(null)}
-            className="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 rounded-lg transition-colors"
-          >
-            Done
-          </button>
-        </div>
+        ))}
       </div>
-    </div>
+      <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-100 pt-4">
+        <button type="button" onClick={handleCopyAll} disabled={isCopying} className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <Copy size={16} aria-hidden="true" />{isCopying ? 'Copying...' : 'Copy All'}
+        </button>
+        <button type="button" onClick={close} disabled={isCopying} className="flex-1 rounded-lg bg-orange-600 px-4 py-2.5 font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Done</button>
+      </div>
+    </StudentDialog>
   );
 }
