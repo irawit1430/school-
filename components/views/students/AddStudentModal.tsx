@@ -1,6 +1,5 @@
-import React, { useRef } from 'react';
-import { X } from 'lucide-react';
-import { useClickOutside } from '@/hooks/useClickOutside';
+import React, { useId, useState } from 'react';
+import { StudentDialog } from './StudentDialog';
 
 interface AddStudentModalProps {
   onClose: () => void;
@@ -8,128 +7,76 @@ interface AddStudentModalProps {
   formData: any;
   setFormData: (data: any) => void;
   isSubmitting: boolean;
+  error?: string | null;
 }
 
-export function AddStudentModal({
-  onClose,
-  onSubmit,
-  formData,
-  setFormData,
-  isSubmitting
-}: AddStudentModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
-  useClickOutside(modalRef, onClose);
+export function AddStudentModal({ onClose, onSubmit, formData, setFormData, isSubmitting, error }: AddStudentModalProps) {
+  const id = useId();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const fields = [
+    { key: 'rfidTag', label: 'RFID Tag', placeholder: 'e.g. RFID-123456789', type: 'text' },
+    { key: 'name', label: 'Student Name', placeholder: 'e.g. John Doe', type: 'text', required: true },
+    { key: 'grade', label: 'Grade/Class', placeholder: 'e.g. 10th', type: 'text' },
+    { key: 'parentName', label: 'Parent Name', placeholder: 'e.g. Mr. Smith', type: 'text', required: true },
+    { key: 'parentEmail', label: 'Parent Email', placeholder: 'e.g. alex.parent@example.com', type: 'email', required: true },
+    { key: 'guardianPhone', label: 'Guardian Phone', placeholder: 'e.g. 9876543210', type: 'tel' },
+  ];
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSubmitting) return;
+    const next: Record<string, string> = {};
+    if (!formData.name.trim()) next.name = 'Enter the student name.';
+    if (!formData.parentName.trim()) next.parentName = 'Enter the parent name.';
+    const email = formData.parentEmail.trim();
+    const emailInput = event.currentTarget.elements.namedItem('parentEmail') as HTMLInputElement;
+    if (!email || emailInput.validity.typeMismatch) next.parentEmail = 'Enter a valid parent email.';
+    if (formData.guardianPhone && !/^[0-9]{10}$/.test(formData.guardianPhone)) next.guardianPhone = 'Enter a 10-digit phone number.';
+    setErrors(next);
+    if (Object.keys(next).length) {
+      event.currentTarget.querySelector<HTMLInputElement>('[name="' + Object.keys(next)[0] + '"]')?.focus();
+      return;
+    }
+    onSubmit(event);
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-lg">
-            Register New Student
-          </h3>
-          <button 
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <form onSubmit={onSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              RFID Tag
-            </label>
-            <input 
-              type="text"
-              value={formData.rfidTag}
-              onChange={(e) => setFormData({...formData, rfidTag: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. RFID-123456789"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Student Name <span className="text-red-500">*</span>
-            </label>
-            <input 
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. John Doe"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Grade/Class
-            </label>
-            <input 
-              type="text"
-              value={formData.grade}
-              onChange={(e) => setFormData({...formData, grade: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. 10th"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Parent Name <span className="text-red-500">*</span>
-            </label>
-            <input 
-              type="text"
-              required
-              value={formData.parentName}
-              onChange={(e) => setFormData({...formData, parentName: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. Mr. Smith"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Parent Email <span className="text-red-500">*</span>
-            </label>
-            <input 
-              type="email"
-              required
-              value={formData.parentEmail}
-              onChange={(e) => setFormData({...formData, parentEmail: e.target.value})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. alex.parent@example.com"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 mb-1">
-              Guardian Phone
-            </label>
-            <input 
-              type="tel" pattern="[0-9]{10}" title="Must be 10 digits" maxLength={10}
-              value={formData.guardianPhone || ''}
-              onChange={(e) => setFormData({...formData, guardianPhone: e.target.value.replace(/\D/g, '')})}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition-all text-sm"
-              placeholder="e.g. 9876543210"
-            />
-          </div>
-          
-          <div className="pt-4 flex gap-3 justify-end">
-            <button 
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70 flex items-center gap-2"
-            >
+    <StudentDialog title="Register New Student" onClose={onClose} busy={isSubmitting}>
+      <form onSubmit={handleSubmit} noValidate>
+        {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        <fieldset disabled={isSubmitting} className="min-w-0 space-y-4">
+          {fields.map(field => (
+            <div key={field.key}>
+              <label htmlFor={id + '-' + field.key} className="mb-1 block text-sm font-semibold text-slate-700">
+                {field.label}{field.required && <span className="text-red-500" aria-hidden="true"> *</span>}
+              </label>
+              <input
+                id={id + '-' + field.key}
+                name={field.key}
+                type={field.type}
+                required={field.required}
+                value={formData[field.key] || ''}
+                onChange={event => {
+                  setFormData({ ...formData, [field.key]: field.type === 'tel' ? event.target.value.replace(/\D/g, '') : event.target.value });
+                  setErrors(current => ({ ...current, [field.key]: '' }));
+                }}
+                maxLength={field.type === 'tel' ? 10 : undefined}
+                inputMode={field.type === 'tel' ? 'numeric' : undefined}
+                aria-invalid={!!errors[field.key]}
+                aria-describedby={errors[field.key] ? id + '-' + field.key + '-error' : undefined}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500 disabled:bg-slate-50"
+                placeholder={field.placeholder}
+              />
+              {errors[field.key] && <p id={id + '-' + field.key + '-error'} role="alert" className="mt-1 text-sm text-red-700">{errors[field.key]}</p>}
+            </div>
+          ))}
+          <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-70">
               {isSubmitting ? 'Registering...' : 'Register Student'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+        </fieldset>
+      </form>
+    </StudentDialog>
   );
 }

@@ -4,16 +4,33 @@ import { Badge } from '@/components/ui/Badge';
 import { clsx } from 'clsx';
 import Link from 'next/link';
 
-export function ActiveRoutesWidget({ activeTripsList }: { activeTripsList: any[] }) {
+export function ActiveRoutesWidget({ activeTripsList, error, onRetry }: {
+  activeTripsList: any[];
+  /** Set when the trips fetch failed. An empty list then means nothing at all. */
+  error?: string;
+  onRetry?: () => void;
+}) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 sm:p-5 md:p-6 lg:p-8">
       <div className="flex items-center justify-between mb-4 sm:mb-5 lg:mb-6">
         <h3 className="text-sm sm:text-base md:text-lg font-bold text-slate-800">Trips in Progress</h3>
-        <span className="text-[10px] sm:text-xs uppercase tracking-wider font-bold text-slate-500">{activeTripsList.length} Live</span>
+        <span className="text-[10px] sm:text-xs uppercase tracking-wider font-bold text-slate-500">
+          {error ? 'Unavailable' : `${activeTripsList.length} Live`}
+        </span>
       </div>
       
       <div className="space-y-3 sm:space-y-4">
-        {activeTripsList.length === 0 ? (
+        {/* "No active trips currently" at 07:30 is alarming and actionable. A failed
+            request that renders identically is how an operator learns to ignore the
+            panel — so the two states say different things. */}
+        {error ? (
+          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            <p className="font-semibold">Couldn&apos;t load trips.</p>
+            <p className="mt-0.5">{error}</p>
+            <p className="mt-1">This is not the same as having none running.</p>
+            {onRetry && <button onClick={onRetry} className="mt-2 font-semibold underline">Retry</button>}
+          </div>
+        ) : activeTripsList.length === 0 ? (
           <div className="text-sm sm:text-base text-slate-500 text-center py-4 sm:py-6">No active trips currently.</div>
         ) : activeTripsList.map((route: any) => (
           <div key={route.id} className="p-3 sm:p-4 md:p-5 border border-slate-100 rounded-lg hover:border-slate-200 transition-colors">

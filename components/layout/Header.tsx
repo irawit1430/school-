@@ -244,10 +244,10 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     switch ((result.type || '').toLowerCase()) {
       case 'student': return `/students?q=${q}`;
       case 'route':   return `/map?route=${q}`;
-      // Drivers and buses have no search box and no need of one at a school's scale —
-      // a dozen rows is a glance. Land on the page rather than pass a filter nothing reads.
-      case 'driver':  return '/drivers';
-      case 'bus':     return '/buses';
+      // Both pages read ?q= into their own search box. Landing on an unfiltered list made
+      // the user find by eye the name they had just typed and clicked.
+      case 'driver':  return `/drivers?q=${q}`;
+      case 'bus':     return `/buses?q=${q}`;
       default:        return '';
     }
   };

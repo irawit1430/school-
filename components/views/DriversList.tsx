@@ -1,533 +1,236 @@
-/* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @next/next/no-img-element */
 "use client";
-import React, { useState, useEffect } from 'react';
-import { fetchDrivers, createDriver, updateDriver, deleteDriver, fetchBuses, fetchRoutes, createTrip, updateTripStatus, updateTrip, apiErrorMessage } from '@/lib/api';
-import { activeTripsSoonestFirst, describeTrip } from '@/lib/trips';
-import { User, Mail, Bus, Clock, MoreVertical, X, CheckCircle, Copy, Edit2, Trash2 } from 'lucide-react';
-import { clsx } from 'clsx';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { fetchDrivers, deleteDriver, fetchBuses, fetchRoutes, updateTripStatus, apiErrorMessage, clearApiCache } from '@/lib/api';
+import { getBusDisplayName } from '@/lib/buses';
+import { formatDeparture, getDriverTrips, matchesDriverSearch, type DriverBus, type DriverFilter, type DriverRecord, type DriverTrip } from '@/lib/drivers';
+import { DriverDialog } from './drivers/DriverDialog';
+import { DriverFormDialog, type DriverCredentials } from './drivers/DriverFormDialog';
+import { DriverTripDialog } from './drivers/DriverTripDialog';
+import { User, Mail, Phone, Search, RefreshCw, ChevronDown, ChevronUp, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const requireList = <T,>(data: unknown): T[] => {
+  if (!Array.isArray(data)) throw new Error('The server returned an unexpected response. Please retry.');
+  return data;
+};
+
 export function DriversList() {
-  const [drivers, setDrivers] = useState<any[]>([]);
-  const [buses, setBuses] = useState<any[]>([]);
-  const [routes, setRoutes] = useState<any[]>([]);
+  const [drivers, setDrivers] = useState<DriverRecord[]>([]);
+  const [buses, setBuses] = useState<DriverBus[]>([]);
+  const [routes, setRoutes] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [driverError, setDriverError] = useState('');
+  const [busError, setBusError] = useState('');
+  const [routeError, setRouteError] = useState('');
+  const loadRequest = useRef(0);
+  // Seeded from ?q= so a header search result arrives filtered to the driver clicked.
+  const [search, setSearch] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('q') || '';
+  });
+  const [filter, setFilter] = useState<DriverFilter>('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [driverForm, setDriverForm] = useState<DriverRecord | 'new' | null>(null);
+  const [tripEditor, setTripEditor] = useState<{ driver: DriverRecord; trip?: DriverTrip } | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const actionLock = useRef(false);
+  const [credentials, setCredentials] = useState<DriverCredentials | null>(null);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState('');
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editDriverId, setEditDriverId] = useState<string | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', email: '', phone: '', password: '' });
-
-  const handleOpenEdit = (driver: any) => {
-    setEditDriverId(driver.id);
-    setEditFormData({ name: driver.name, email: driver.email, phone: driver.phone || '', password: '' });
-    setIsEditModalOpen(true);
-  };
-
-  const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editDriverId) return;
-    setIsSubmitting(true);
-    try {
-      const dataToUpdate: any = { name: editFormData.name, email: editFormData.email };
-      if (editFormData.phone !== undefined) dataToUpdate.phone = editFormData.phone;
-      if (editFormData.password) dataToUpdate.password = editFormData.password;
-      await updateDriver(editDriverId, dataToUpdate);
-      setIsEditModalOpen(false);
-      loadData();
-      toast.success('Driver updated successfully');
-    } catch (error: any) {
-      toast.error(apiErrorMessage(error, 'Failed to update driver.'));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDeleteDriver = async (id: string) => {
-    if (!window.confirm('Are you sure you want to permanently delete this driver?')) return;
-    try {
-      await deleteDriver(id);
-      loadData();
-      toast.success('Driver deleted successfully');
-    } catch (error: any) {
-      toast.error(apiErrorMessage(error, 'Failed to delete driver.'));
-    }
-  };
-  
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignFormData, setAssignFormData] = useState({ driverId: '', busId: '', routeId: '' });
-  const [assignDriverName, setAssignDriverName] = useState('');
-  const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
-
-  const [createdCredentials, setCreatedCredentials] = useState<{email: string, tempPassword: string} | null>(null);
-
-  const loadData = () => {
-    setLoading(true);
-    Promise.all([fetchDrivers(), fetchBuses(), fetchRoutes({ summary: true })])
-      .then(([driversData, busesData, routesData]) => {
-        setDrivers(driversData);
-        setBuses(busesData);
-        setRoutes(routesData);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load data:', err);
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    loadData();
+  const loadData = useCallback(async (force = false) => {
+    if (force) clearApiCache();
+    const request = ++loadRequest.current;
+    const current = () => request === loadRequest.current;
+    setRefreshing(true);
+    setOptionsLoading(true);
+    // Each result updates independently: a routes outage must not hide the drivers.
+    await Promise.allSettled([
+      fetchDrivers().then(data => {
+        const list = requireList<DriverRecord>(data);
+        if (current()) { setDrivers(list); setDriverError(''); }
+      }).catch(err => {
+        if (current()) setDriverError(apiErrorMessage(err, 'Could not load drivers.'));
+      }).finally(() => { if (current()) setLoading(false); }),
+      fetchBuses().then(data => {
+        const list = requireList<DriverBus>(data);
+        if (current()) { setBuses(list); setBusError(''); }
+      }).catch(err => { if (current()) setBusError(apiErrorMessage(err, 'Could not load buses.')); }),
+      fetchRoutes({ summary: true }).then(data => {
+        const list = requireList<{ id: string; name: string }>(data);
+        if (current()) { setRoutes(list); setRouteError(''); }
+      }).catch(err => { if (current()) setRouteError(apiErrorMessage(err, 'Could not load routes.')); }),
+    ]);
+    if (current()) { setRefreshing(false); setOptionsLoading(false); }
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const response = await createDriver(formData);
-      setCreatedCredentials({
-        email: response.driver.email,
-        tempPassword: response.tempPassword
-      });
-      setIsModalOpen(false);
-      loadData();
-    } catch (err) {
-      console.error('Failed to create driver', err);
-      toast.error(apiErrorMessage(err, 'Failed to create driver.'));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  useEffect(() => {
+    // Start the initial request; later renders are driven by its independent results.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
+    // This ref is a request generation counter, not a DOM node.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { loadRequest.current++; };
+  }, [loadData]);
 
-  const handleOpenAssign = (driver: any) => {
-    setAssignDriverName(driver.name);
-    setAssignFormData({ driverId: driver.id, busId: '', routeId: '' });
-    setIsAssignModalOpen(true);
-  };
-
-  const handleAssignSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAssignSubmitting(true);
-    try {
-      await createTrip({
-        routeId: assignFormData.routeId,
-        busId: assignFormData.busId,
-        driverId: assignFormData.driverId
-      });
-      setIsAssignModalOpen(false);
-      loadData(); // Refresh to show assignment
-    } catch (err) {
-      console.error('Failed to assign trip', err);
-      toast.error(apiErrorMessage(err, 'Failed to assign trip.'));
-    } finally {
-      setIsAssignSubmitting(false);
-    }
-  };
-
-  // Takes the trip, not just its id: the confirmation has to name what it is about to
-  // cancel. A driver can have more than one live trip, and this button acts on whichever
-  // one the row happens to be showing.
-  const handleUnassignTrip = async (trip: any) => {
-    if (!trip?.id) {
-      toast.error("Error: No Trip ID found for this assignment.");
-      return;
-    }
-    if (!window.confirm(`Cancel this trip?\n\n${describeTrip(trip)}\n\nThe driver and bus are freed for other trips.`)) return;
+  const cancelTrip = async (driver: DriverRecord, trip: DriverTrip) => {
+    if (actionLock.current) return;
+    const description = `${driver.name}\n${trip.route?.name ?? 'Route unavailable'} · ${trip.bus ? getBusDisplayName(trip.bus) : 'Bus unavailable'}\n${formatDeparture(trip.scheduledStart)}`;
+    if (!window.confirm(`Cancel this trip?\n\n${description}\n\nThis cancels the whole trip, not just the driver assignment. Other planned trips will remain.`)) return;
+    actionLock.current = true;
+    setPendingAction(trip.id);
     try {
       await updateTripStatus(trip.id, 'CANCELLED');
-      loadData();
+      setDrivers(list => list.map(item => item.id === driver.id ? { ...item, driverTrips: item.driverTrips?.filter(t => t.id !== trip.id) } : item));
       toast.success('Trip cancelled');
-    } catch (err) {
-      console.error('Failed to unassign trip', err);
-      toast.error(apiErrorMessage(err, 'Failed to cancel trip.'));
-    }
-  };
-  
-  const copyCredentials = () => {
-    if (createdCredentials) {
-      navigator.clipboard.writeText(`Email: ${createdCredentials.email}\nPassword: ${createdCredentials.tempPassword}`);
-      toast.success("Copied to clipboard!");
-    }
+      await loadData();
+    } catch (err) { toast.error(apiErrorMessage(err, 'Could not cancel the trip.')); }
+    finally { actionLock.current = false; setPendingAction(null); }
   };
 
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-end mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Driver Management</h2>
-          <p className="text-sm text-slate-500 mt-1">Manage fleet drivers and assignments</p>
-        </div>
-        <button 
-          onClick={() => {
-            setFormData({ name: '', email: '' });
-            setIsModalOpen(true);
-          }}
-          className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center gap-2 shadow-sm text-sm"
-        >
-          <User size={16} /> Add Driver
-        </button>
-      </div>
+  const removeDriver = async (driver: DriverRecord) => {
+    if (actionLock.current) return;
+    if (!window.confirm(`Permanently delete ${driver.name} (${driver.email})?\n\nThis removes their driver account and cannot be undone.`)) return;
+    actionLock.current = true;
+    setPendingAction(driver.id);
+    try {
+      await deleteDriver(driver.id);
+      setDrivers(list => list.filter(item => item.id !== driver.id));
+      setExpandedId(null);
+      toast.success('Driver deleted');
+      await loadData();
+    } catch (err) { toast.error(apiErrorMessage(err, 'Could not delete the driver.')); }
+    finally { actionLock.current = false; setPendingAction(null); }
+  };
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3 border-b border-slate-100">Driver Name</th>
-                <th className="px-4 py-3 border-b border-slate-100">Email</th>
-                <th className="px-4 py-3 border-b border-slate-100">Status</th>
-                <th className="px-4 py-3 border-b border-slate-100">Current Bus</th>
-                <th className="px-4 py-3 border-b border-slate-100">Current Route</th>
-                <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    Loading drivers...
-                  </td>
-                </tr>
-              ) : drivers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500 text-sm">
-                    No drivers found. Create one to get started.
-                  </td>
-                </tr>
-              ) : drivers.map((driver: any) => {
-                // Soonest-first, and DELAYED counts as live — a driver whose bus is
-                // running late is not free. Both were wrong here, and together they
-                // pointed Unassign at a trip the admin was not looking at.
-                const activeTrips = activeTripsSoonestFirst(driver.driverTrips);
-                const isActive = activeTrips.length > 0;
-                const currentTrip = activeTrips[0] ?? null;
-                
-                return (
-                <tr key={driver.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-slate-100 text-slate-600 p-1.5 rounded flex-shrink-0">
-                        <User size={14} />
-                      </div>
-                      <span className="font-bold text-slate-900 text-sm">{driver.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 text-slate-600 text-xs">
-                      <Mail size={12} />
-                      {driver.email}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={clsx(
-                      "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5",
-                      isActive ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      <div className={clsx("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-500" : "bg-amber-500")}></div>
-                      {isActive ? 'Active' : 'Idle'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs font-semibold text-slate-700">
-                      {currentTrip && currentTrip.bus ? currentTrip.bus.registrationNumber : 'Unassigned'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-slate-600">
-                      {currentTrip && currentTrip.route ? currentTrip.route.name : '—'}
-                      {activeTrips.length > 1 && (
-                        <span className="ml-1.5 text-[10px] font-semibold text-amber-700" title={activeTrips.slice(1).map(describeTrip).join('\n')}>
-                          +{activeTrips.length - 1} more
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {isActive && currentTrip ? (
-                        <button 
-                          onClick={() => handleUnassignTrip(currentTrip)}
-                          className="text-xs font-semibold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md transition-colors"
-                        >
-                          Cancel Trip
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={() => handleOpenAssign(driver)}
-                          className="text-xs font-semibold text-orange-600 hover:orange-800 bg-orange-50 hover:bg-orange-100 px-3 py-1.5 rounded-md transition-colors"
-                        >
-                          Assign Trip
-                        </button>
-                      )}
-                      <button onClick={() => handleOpenEdit(driver)} className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-md transition-colors" title="Edit Driver">
-                        <Edit2 size={16} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteDriver(driver.id)} 
-                        disabled={isActive}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:text-slate-400 disabled:hover:bg-transparent rounded-md transition-colors" 
-                        title={isActive ? "Cannot delete active driver" : "Delete Driver"}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )})}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  const copyCredentials = async () => {
+    if (!credentials || copying) return;
+    setCopying(true);
+    setCopyError('');
+    try {
+      await navigator.clipboard.writeText(`Email: ${credentials.email}\nPassword: ${credentials.tempPassword}`);
+      toast.success('Login details copied');
+    } catch {
+      setCopyError('Could not copy automatically. Select and copy the login details below, or try again.');
+    } finally { setCopying(false); }
+  };
 
-      {isAssignModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">Assign Trip to {assignDriverName}</h3>
-              <button 
-                onClick={() => setIsAssignModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleAssignSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Select Bus <span className="text-red-500">*</span>
-                </label>
-                <select 
-                  required
-                  value={assignFormData.busId}
-                  onChange={(e) => setAssignFormData({...assignFormData, busId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                >
-                  <option value="">Select a Bus</option>
-                  {buses.map(bus => (
-                    <option key={bus.id} value={bus.id}>{bus.registrationNumber} ({bus.capacity} seats)</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Select Route <span className="text-red-500">*</span>
-                </label>
-                <select 
-                  required
-                  value={assignFormData.routeId}
-                  onChange={(e) => setAssignFormData({...assignFormData, routeId: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                >
-                  <option value="">Select a Route</option>
-                  {routes.map(route => (
-                    <option key={route.id} value={route.id}>{route.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsAssignModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isAssignSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
-                >
-                  {isAssignSubmitting ? 'Assigning...' : 'Confirm Assignment'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+  const visibleDrivers = drivers.filter(driver => matchesDriverSearch(driver, search) && (filter === 'all' || getDriverTrips(driver).activity === filter));
+  const optionsError = [busError && `Buses: ${busError}`, routeError && `Routes: ${routeError}`].filter(Boolean).join(' ');
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">Add New Driver</h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Driver Name <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="e.g. Raju Kumar"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Email Address <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="email"
-                  required
-                  value={formData.email}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="e.g. raju@yourfleet.com"
-                />
-              </div>
-              <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
-                >
-                  {isSubmitting ? 'Creating...' : 'Add Driver'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900 text-lg">Edit Driver</h3>
-              <button 
-                onClick={() => setIsEditModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleEditSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Driver Name <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="text"
-                  required
-                  value={editFormData.name}
-                  onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Email Address <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="email"
-                  required
-                  value={editFormData.email}
-                  onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Phone Number
-                </label>
-                <input 
-                  type="tel" pattern="[0-9]{10}" title="Must be 10 digits"
-                  value={editFormData.phone}
-                  onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="e.g. 9876543210"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  New Password <span className="text-slate-400 font-normal text-xs">(leave blank to keep current)</span>
-                </label>
-                <input 
-                  type="text"
-                  value={editFormData.password}
-                  onChange={(e) => setEditFormData({...editFormData, password: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm"
-                  placeholder="Enter new password"
-                  minLength={8}
-                />
-              </div>
-              <div className="pt-4 flex justify-end gap-3">
-                <button 
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2 rounded-lg font-medium text-slate-600 hover:bg-slate-100 transition-colors text-sm border border-slate-200"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors text-sm disabled:opacity-70"
-                >
-                  {isSubmitting ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {createdCredentials && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 text-center">
-            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle size={24} />
-            </div>
-            <h3 className="font-bold text-slate-900 text-lg mb-2">Driver Created Successfully!</h3>
-            <p className="text-sm text-slate-500 mb-6">Share these credentials with the driver immediately. This password cannot be recovered later.</p>
-            
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 text-left">
-              <div className="mb-2">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Email</span>
-                <span className="text-sm font-semibold text-slate-800">{createdCredentials.email}</span>
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Temporary Password</span>
-                <span className="text-sm font-mono font-bold text-slate-800 bg-white px-2 py-1 border border-slate-200 rounded">{createdCredentials.tempPassword}</span>
-              </div>
-            </div>
-            
-            <button 
-              onClick={copyCredentials}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 mb-3"
-            >
-              <Copy size={16} /> Copy to Clipboard
-            </button>
-            <button 
-              onClick={() => setCreatedCredentials(null)}
-              className="w-full text-slate-500 hover:text-slate-700 font-medium text-sm transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+  return <div className="space-y-5 p-4 sm:p-6">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h2 className="text-2xl font-bold tracking-tight text-slate-900">Drivers</h2><p className="mt-1 text-sm text-slate-500">Contact drivers and manage current and planned trips.</p></div>
+      <button onClick={() => setDriverForm('new')} className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"><User size={16} /> Add driver</button>
     </div>
-  );
+    {driverError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <p>Couldn’t load drivers. {driverError}</p>
+      {drivers.length > 0 && <p className="mt-1">Showing the last loaded list. Refresh before changing assignments.</p>}
+      <button disabled={refreshing} onClick={() => void loadData(true)} className="mt-2 font-semibold underline disabled:opacity-50">Retry loading drivers</button>
+    </div>}
+    <div className="flex flex-wrap items-end gap-3">
+      <label htmlFor="driver-search" className="min-w-0 flex-1 basis-64 text-sm font-medium text-slate-700">Search drivers
+        <div className="relative mt-1"><Search size={16} className="absolute left-3 top-3 text-slate-400" aria-hidden="true" /><input id="driver-search" type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, phone, bus or route" className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500" /></div>
+      </label>
+      <label htmlFor="driver-filter" className="text-sm font-medium text-slate-700">Trip status
+        <select id="driver-filter" value={filter} onChange={e => setFilter(e.target.value as DriverFilter)} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+          <option value="all">All drivers</option><option value="running">On trip</option><option value="planned">Trip planned (not running)</option><option value="unassigned">No trip assigned</option>
+        </select>
+      </label>
+      <button disabled={refreshing} onClick={() => void loadData(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50"><RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+    </div>
+    {!loading && <p role="status" className="text-sm text-slate-500">Showing {visibleDrivers.length} of {drivers.length} drivers{driverError ? ' · last loaded data' : ''}</p>}
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-600"><tr>
+            <th scope="col" className="px-4 py-3">Driver</th><th scope="col" className="px-4 py-3">Contact</th><th scope="col" className="px-4 py-3">Trip status</th><th scope="col" className="px-4 py-3">Current / next trip</th><th scope="col" className="px-4 py-3 text-right">Actions</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? <tr><td colSpan={5} className="p-8 text-center text-slate-500">Loading drivers…</td></tr>
+              : visibleDrivers.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-500">
+                {driverError && !drivers.length ? 'Driver data is unavailable. Use Retry above.' : !drivers.length ? 'No drivers yet. Add a driver to get started.' : <><p>No drivers match your search or filter.</p><button onClick={() => { setSearch(''); setFilter('all'); }} className="mt-2 text-orange-700 underline">Clear search and filters</button></>}
+              </td></tr>
+                : visibleDrivers.map(driver => {
+                  const { running, planned, primary, activity } = getDriverTrips(driver);
+                  const trips = [...running, ...planned];
+                  const expanded = expandedId === driver.id;
+                  const isDelayed = running.some(trip => trip.status === 'DELAYED');
+                  return <React.Fragment key={driver.id}>
+                    <tr className="align-top hover:bg-slate-50/50">
+                      <td className="px-4 py-4 font-semibold text-slate-900">{driver.name}</td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {driver.phone ? <a href={`tel:${driver.phone.replace(/[^+\d]/g, '')}`} className="mb-1 inline-flex items-center gap-1.5 whitespace-nowrap text-orange-700 hover:underline"><Phone size={14} />{driver.phone}</a> : <p className="mb-1 text-xs text-slate-500">No phone number</p>}
+                        <a href={`mailto:${driver.email}`} className="flex items-center gap-1.5 text-xs hover:underline"><Mail size={13} className="shrink-0" />{driver.email}</a>
+                      </td>
+                      <td className="px-4 py-4"><span className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${isDelayed ? 'bg-amber-100 text-amber-800' : activity === 'running' ? 'bg-emerald-100 text-emerald-800' : activity === 'planned' ? 'bg-blue-50 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>
+                        {isDelayed ? 'On trip · delayed' : activity === 'running' ? 'On trip' : activity === 'planned' ? 'Trip planned' : 'No trip assigned'}
+                      </span>{running.length > 0 && planned.length > 0 && <p className="mt-1 text-xs text-slate-500">{planned.length} planned</p>}</td>
+                      <td className="px-4 py-4">{primary ? <>
+                        <p className="font-medium text-slate-800">{primary.route?.name ?? 'Route unavailable'}</p>
+                        <p className="mt-1 text-xs text-slate-600">{primary.bus ? getBusDisplayName(primary.bus) : 'Bus unavailable'}</p>
+                        <p className="mt-1 text-xs text-slate-500">{activity === 'running' ? 'Running now' : formatDeparture(primary.scheduledStart)}</p>
+                      </> : <span className="text-slate-500">No current or planned trips</span>}</td>
+                      <td className="px-4 py-4"><div className="flex flex-wrap justify-end gap-2">
+                        <button aria-expanded={expanded} aria-controls={`driver-trips-${driver.id}`} onClick={() => setExpandedId(expanded ? null : driver.id)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">{expanded ? 'Hide details' : trips.length ? `View trips (${trips.length})` : 'Details'}{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+                        <button onClick={() => setDriverForm(driver)} className="rounded-md px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-50">Edit driver</button>
+                      </div></td>
+                    </tr>
+                    {expanded && <tr id={`driver-trips-${driver.id}`}><td colSpan={5} className="bg-slate-50 p-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-slate-900">Trips for {driver.name}</h3>
+                        <button disabled={running.length > 0 || !!driverError || !!pendingAction} onClick={() => setTripEditor({ driver })} className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Plan a trip</button>
+                      </div>
+                      {running.length > 0 && <p className="mb-3 text-xs text-slate-600">This driver is on a trip. You can plan another one after it finishes.</p>}
+                      {!trips.length && <p className="py-2 text-sm text-slate-500">No current or planned trips. Choose “Plan a trip” to assign a bus and route.</p>}
+                      <ul className="space-y-2">{trips.map(trip => <li key={trip.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <div><p className="font-medium text-slate-800">{trip.route?.name ?? 'Route unavailable'} · {trip.bus ? getBusDisplayName(trip.bus) : 'Bus unavailable'}</p>
+                          <p className="mt-1 text-xs text-slate-600">{trip.status === 'PLANNED' ? 'Planned' : trip.status === 'DELAYED' ? 'On trip · delayed' : 'On trip'} · {formatDeparture(trip.scheduledStart)}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {trip.status === 'PLANNED' && <button disabled={!!pendingAction || !!driverError} onClick={() => setTripEditor({ driver, trip })} className="rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-50">Edit planned trip</button>}
+                          <button disabled={!!pendingAction || !!driverError} onClick={() => void cancelTrip(driver, trip)} className="rounded-md px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">{pendingAction === trip.id ? 'Cancelling…' : 'Cancel trip'}</button>
+                        </div>
+                      </li>)}</ul>
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                        <Link href="/schedules" className="text-xs text-orange-700 underline">Manage repeating schedules</Link>
+                        <div className="text-right"><button disabled={trips.length > 0 || !!pendingAction || !!driverError} onClick={() => void removeDriver(driver)} className="rounded-md px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-40">{pendingAction === driver.id ? 'Deleting…' : 'Delete driver permanently'}</button>
+                          {trips.length > 0 && <p className="text-xs text-slate-500">Drivers with current or planned trips cannot be deleted.</p>}
+                        </div>
+                      </div>
+                    </td></tr>}
+                  </React.Fragment>;
+                })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {driverForm && <DriverFormDialog driver={driverForm === 'new' ? undefined : driverForm} onClose={() => setDriverForm(null)} onSaved={details => {
+      toast.success(driverForm === 'new' ? 'Driver added' : 'Driver updated');
+      if (details) { setCredentials(details); setCopyError(''); }
+      setDriverForm(null);
+      void loadData();
+    }} />}
+    {tripEditor && <DriverTripDialog driver={drivers.find(driver => driver.id === tripEditor.driver.id) ?? tripEditor.driver} trip={tripEditor.trip} buses={buses} routes={routes}
+      loading={optionsLoading} loadError={[driverError, optionsError].filter(Boolean).join(' ')} onRetry={() => void loadData(true)} onClose={() => setTripEditor(null)} onSaved={() => {
+        toast.success(tripEditor.trip ? 'Planned trip updated' : 'Trip planned');
+        setExpandedId(tripEditor.driver.id);
+        setTripEditor(null);
+        void loadData();
+      }} />}
+    {credentials && <DriverDialog title="Driver login details" busy={copying} onClose={() => setCredentials(null)}>
+      <div className="space-y-4 p-6">
+        <p className="text-sm text-slate-600">Share these details with the driver before closing. The temporary password is only shown now.</p>
+        {copyError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{copyError}</p>}
+        <dl className="select-text space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+          <div><dt className="text-slate-500">Email</dt><dd className="break-all font-semibold">{credentials.email}</dd></div>
+          <div><dt className="text-slate-500">Temporary password</dt><dd className="break-all font-mono font-semibold">{credentials.tempPassword}</dd></div>
+        </dl>
+        <button disabled={copying} onClick={() => void copyCredentials()} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"><Copy size={16} />{copying ? 'Copying…' : 'Copy login details'}</button>
+        <button disabled={copying} onClick={() => setCredentials(null)} className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm">Done</button>
+      </div>
+    </DriverDialog>}
+  </div>;
 }

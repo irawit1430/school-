@@ -1,17 +1,18 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import GoogleRouteMap from './GoogleRouteMap';
 import { fetchOsrmRoute, reverseGeocode, searchLocation, Stop } from '@/lib/osrm';
 import { hasMapsKey, geocodeLatLng, geocodeAddress } from '@/lib/googleMaps';
-import { createRoute, updateRoute, connectSocket, createTrip, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
+import { fetchGoogleTrafficRoute } from '@/lib/googleRoutes';
+import { createRoute, updateRoute, connectSocket, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
 import toast from 'react-hot-toast';
-import { Search, Loader2, Map as MapIcon, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, Map as MapIcon, AlertTriangle, RefreshCw, X as XIcon } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import { SearchableSelect } from '@/components/ui/SearchableSelect';
+import { activeTripsSoonestFirst } from '@/lib/trips';
 
 // ─── Stable unique id per stop (fixes duplicate lat/lng collisions) ───
 let uidCounter = 0;
@@ -22,6 +23,13 @@ const makeUid = () =>
 
 const stopSignature = (list: Stop[]) => list.map((s) => `${s.lat},${s.lng}`).join('|');
 
+// ─── Extended Stop type with editor metadata ──────────────────────────
+type EditorStop = Stop & {
+  /** True once the user has manually typed in the stop-name field. Prevents
+   *  late reverse-geocode responses from overwriting an intentional name. */
+  nameEdited?: boolean;
+};
+
 // ─── Reconcile an existing route's stops via granular endpoints ───
 // Backend requires: POST (add), DELETE (remove), updateStop (edit),
 // PUT .../reorder (set all orderIdx). PUT /routes/:id itself only takes metadata.
@@ -30,7 +38,7 @@ const stopSignature = (list: Stop[]) => list.map((s) => `${s.lat},${s.lng}`).joi
 async function syncRouteStops(
   routeId: string,
   initialStops: any[],
-  currentStops: Stop[],
+  currentStops: EditorStop[],
   legMinutes: number[] = []
 ) {
   // 1. Delete stops that were removed
@@ -57,17 +65,25 @@ async function syncRouteStops(
 
     if (s.id) {
       const orig = initialById.get(s.id);
-      const changed = !orig
-        || orig.name !== s.name
-        || orig.lat !== s.lat
-        || orig.lng !== s.lng
-        || (orig.address ?? null) !== (s.address ?? null);
+      const changed =
+        !orig ||
+        orig.name !== s.name ||
+        orig.lat !== s.lat ||
+        orig.lng !== s.lng ||
+        (orig.address ?? null) !== (s.address ?? null) ||
+        // Issue 4a: reordering must update arrival offsets
+        (orig.orderIdx ?? null) !== i;
       if (changed) await updateStop(routeId, s.id, body);
       finalOrder.push({ id: s.id, orderIdx: i });
     } else {
+      // Issue 4b: backfill the server id into the stop object so that a
+      // retry after a partial failure treats this stop as existing.
       const created: any = await createStop(routeId, body);
       const newId = created?.id ?? created?.data?.id;
-      if (newId) finalOrder.push({ id: newId, orderIdx: i });
+      if (newId) {
+        s.id = newId; // mutate in place — intentional retry guard
+        finalOrder.push({ id: newId, orderIdx: i });
+      }
     }
   }
 
@@ -109,17 +125,20 @@ function SortableStopItem({ stop, index, onRemove, onRename, disabled }: any) {
   );
 }
 
-export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers, onSaved, onCancel }:
-  { schoolId: string; initialRoute?: any; buses?: any[]; drivers?: any[]; onSaved: () => void; onCancel: () => void }) {
+export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCancel }:
+  { schoolId: string; initialRoute?: any; onSaved: () => void; onCancel: () => void }) {
   const [name, setName] = useState(initialRoute?.name || '');
-  const [stops, setStops] = useState<Stop[]>(
+  const [stops, setStops] = useState<EditorStop[]>(
     (initialRoute?.stops || []).map((s: any) => ({ ...s, uid: makeUid() }))
   );
 
-  const latestTrip = initialRoute?.trips?.length > 0 ? initialRoute.trips[initialRoute.trips.length - 1] : null;
-  // Assignment state
-  const [selectedBusId, setSelectedBusId] = useState(latestTrip?.busId || '');
-  const [selectedDriverId, setSelectedDriverId] = useState(latestTrip?.driverId || '');
+  // This editor edits the route: its name, its stops, its shape. Crew and direction
+  // belong to a trip and are set where trips are made, so that a save here can never
+  // surprise the admin by starting one.
+  //
+  // The route's live trip is still read — not to edit, but so the map can follow the
+  // bus that is on this route right now while its stops are being moved.
+  const liveBusId = activeTripsSoonestFirst(initialRoute?.trips)[0]?.busId ?? '';
 
   const [osrm, setOsrm] = useState<any>(null);
   const [osrmLoading, setOsrmLoading] = useState(false);
@@ -140,12 +159,18 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
   const lastGeocodeRef = useRef<number>(0);
   // Route id we created this session — prevents creating a duplicate route on retry
   const createdRouteIdRef = useRef<string | null>(null);
-  // Signature of the last successfully-computed route. Seeded from the initial
-  // route ONLY if it already has geometry, so legacy routes still get computed.
-  const computedSigRef = useRef<string>(
-    (initialRoute?.geometry && (initialRoute?.stops?.length ?? 0) >= 2)
-      ? stopSignature(initialRoute.stops)
-      : ''
+  // Recompute existing routes when the editor opens so their ETA reflects current traffic.
+  const computedSigRef = useRef<string>('');
+
+  // Issue 5: Dirty-state snapshot — captures the initial form state so any
+  // rename, move, or reorder is correctly detected as an unsaved change.
+  const initialSnapshot = useRef(
+    JSON.stringify({
+      name: initialRoute?.name || '',
+      stops: (initialRoute?.stops || []).map((s: any) => ({
+        id: s.id, name: s.name, lat: s.lat, lng: s.lng,
+      })),
+    })
   );
 
   useEffect(() => {
@@ -158,17 +183,15 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Live bus tracking for the currently selected bus
+  // Live position of whichever bus is currently running this route
   useEffect(() => {
-    if (selectedBusId) {
+    if (liveBusId) {
       const socket = connectSocket();
-      hasCenteredOnBusRef.current = false; // Reset centering flag for new bus
-      // Payload shape: { busId, licensePlate, capacity, driverName, routeName, lat, lng, speed, timestamp }
+      hasCenteredOnBusRef.current = false;
       socket.on('location_update', (data: any) => {
-        if (data.busId === selectedBusId) {
+        if (data.busId === liveBusId) {
           setLiveBusPosition([data.lat, data.lng]);
           if (!hasCenteredOnBusRef.current) {
-            // Center the map on the bus location on the first GPS ping
             setLastAddedPos([data.lat, data.lng]);
             hasCenteredOnBusRef.current = true;
           }
@@ -178,7 +201,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     } else {
       setLiveBusPosition(null);
     }
-  }, [selectedBusId]);
+  }, [liveBusId]);
 
   // Seed OSRM from an existing route that already has geometry
   useEffect(() => {
@@ -199,9 +222,8 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
   }, [initialRoute]);
 
   // Recompute the path whenever the stops (or their order) actually change.
-  // Uses a coordinate signature so add / remove / reorder / marker-drag all
-  // trigger a recompute — even when the stop COUNT stays the same (fixes stale
-  // distance/duration on edit).
+  // Issue 16e: call setOsrmLoading(false) in the cleanup so the spinner never
+  // persists if the effect is torn down before the fetch resolves.
   useEffect(() => {
     let cancelled = false;
     const sig = stopSignature(stops);
@@ -212,11 +234,23 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
       computedSigRef.current = sig;
       return;
     }
-    if (sig === computedSigRef.current) return; // unchanged (e.g. initial load)
+    if (sig === computedSigRef.current) return;
 
     setOsrmLoading(true);
     setOsrmError(false);
-    fetchOsrmRoute(stops).then(r => {
+    const calculateRoute = async () => {
+      if (hasMapsKey) {
+        try {
+          const googleRoute = await fetchGoogleTrafficRoute(stops);
+          if (googleRoute) return googleRoute;
+        } catch {
+          // Keep the route editor usable if Routes API is disabled for this key.
+        }
+      }
+      return fetchOsrmRoute(stops);
+    };
+
+    calculateRoute().then(r => {
       if (cancelled) return;
       setOsrmLoading(false);
       if (r) {
@@ -233,7 +267,11 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
       setOsrmError(true);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      // Issue 16e: don't leave the spinner running after unmount/re-run
+      setOsrmLoading(false);
+    };
   }, [stops]);
 
   const sensors = useSensors(
@@ -253,19 +291,16 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     }
   };
 
+  // Issue 16b: mark the stop as manually edited so geocode can't overwrite it
   const handleRename = (index: number, value: string) => {
-    setStops(prev => prev.map((s, i) => (i === index ? { ...s, name: value } : s)));
+    setStops(prev => prev.map((s, i) => (i === index ? { ...s, name: value, nameEdited: true } : s)));
   };
 
   const handleAdd = async (lat: number, lng: number) => {
     const uid = makeUid();
-    // Add immediately with a fallback name so the map feels responsive.
     setStops(prev => [...prev, { uid, lat, lng, name: `Stop ${prev.length + 1}` }]);
     setLastAddedPos([lat, lng]);
 
-    // Nominatim allows ~1 req/sec, so clicking out five stops quickly used to leave four
-    // of them called "Stop 3". Google has no such limit at this volume — the throttle only
-    // applies when we are falling back to Nominatim.
     if (!hasMapsKey) {
       const now = Date.now();
       if (now - lastGeocodeRef.current < 1100) return;
@@ -277,14 +312,27 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
       : await reverseGeocode(lat, lng);
     if (address) {
       setStops(prev => prev.map(s =>
-        s.uid === uid ? { ...s, name: address.split(',')[0], address } : s
+        // Issue 16b: only overwrite the name if the user hasn't edited it yet
+        s.uid === uid && !s.nameEdited ? { ...s, name: address.split(',')[0], address } : s
       ));
     }
   };
 
-  const handleMarkerDragEnd = (uid: string, lat: number, lng: number) => {
+  // Issue 16c: re-geocode when the user drags a pin to a new location
+  const handleMarkerDragEnd = useCallback(async (uid: string, lat: number, lng: number) => {
     setStops(prev => prev.map(s => (s.uid === uid ? { ...s, lat, lng } : s)));
-  };
+
+    const address = hasMapsKey
+      ? await geocodeLatLng(lat, lng)
+      : await reverseGeocode(lat, lng);
+    if (address) {
+      setStops(prev => prev.map(s =>
+        s.uid === uid
+          ? { ...s, address, ...(s.nameEdited ? {} : { name: address.split(',')[0] }) }
+          : s
+      ));
+    }
+  }, []);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -313,10 +361,21 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
     setSearchResults([]);
   };
 
-  const isDirty = () =>
-    name.trim() !== (initialRoute?.name || '') ||
-    stops.length !== (initialRoute?.stops?.length || 0) ||
-    !!selectedBusId || !!selectedDriverId;
+  // Issue 16d: explicit retry — reset the computed signature so the effect fires again
+  const handleRetryOsrm = () => {
+    computedSigRef.current = '';
+    setOsrmError(false);
+    setStops(s => [...s]); // trigger the effect
+  };
+
+  // Issue 5: compare full snapshot so rename / move / reorder is caught
+  const isDirty = () => {
+    const current = JSON.stringify({
+      name,
+      stops: stops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng })),
+    });
+    return current !== initialSnapshot.current;
+  };
 
   const handleCancel = () => {
     if (isDirty() && !window.confirm('Discard changes to this route?')) return;
@@ -326,10 +385,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
   const handleSave = async () => {
     if (!name.trim() || stops.length < 2) {
       toast.error('Route needs a name and at least 2 stops.');
-      return;
-    }
-    if ((selectedBusId && !selectedDriverId) || (!selectedBusId && selectedDriverId)) {
-      toast.error('Please select both a bus and a driver to assign.');
       return;
     }
     if (osrmLoading) {
@@ -352,12 +407,9 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
         expectedArrivalMinutes: osrm?.legMinutes?.[i] ?? null,
       }));
 
-      // Reuse a route we may have already created this session (prevents a
-      // duplicate route if a previous assign step failed and the user retries).
       let routeId: string | undefined = initialRoute?.id || createdRouteIdRef.current || undefined;
 
       if (initialRoute?.id) {
-        // Metadata only — stops are managed via granular endpoints.
         await updateRoute(initialRoute.id, {
           name,
           estimatedDuration: osrm?.durationMin ?? null,
@@ -377,13 +429,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
         createdRouteIdRef.current = routeId ?? null;
       }
 
-      // Optional assignment — works for both create and edit now.
-      if (selectedBusId && selectedDriverId && routeId) {
-        await createTrip({ routeId, busId: selectedBusId, driverId: selectedDriverId });
-        toast.success(initialRoute?.id ? 'Route updated & trip started!' : 'Route created & assigned!');
-      } else {
-        toast.success(initialRoute?.id ? 'Route updated' : 'Route created successfully');
-      }
+      toast.success(initialRoute?.id ? 'Route updated' : 'Route created');
       onSaved();
     } catch (err: any) {
       toast.error(err.message || 'Save failed');
@@ -416,39 +462,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
               onChange={e => setName(e.target.value)}
             />
           </div>
-
-          {buses && drivers && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1">
-                <SearchableSelect
-                    disabled={saving}
-                    label="Assign Bus"
-                    options={buses.map((bus: any) => ({
-                      value: bus.id,
-                      label: bus.licensePlate,
-                      subLabel: bus.capacity ? `${bus.capacity} seats` : undefined
-                    }))}
-                    value={selectedBusId}
-                    onChange={(val) => setSelectedBusId(val)}
-                    placeholder="Select bus"
-                  />
-              </div>
-              <div className="flex flex-col gap-1">
-                <SearchableSelect
-                    disabled={saving}
-                    label="Assign Driver"
-                    options={drivers.map((driver: any) => ({
-                      value: driver.id,
-                      label: driver.name,
-                      subLabel: driver.email
-                    }))}
-                    value={selectedDriverId}
-                    onChange={(val) => setSelectedDriverId(val)}
-                    placeholder="Select driver"
-                  />
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-col gap-2 mt-2">
             <label className="text-sm font-semibold text-slate-700 flex justify-between items-center">
@@ -531,8 +544,18 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
             </div>
           )}
           {!osrmLoading && osrmError && (
-            <div className="mt-auto bg-rose-50 border border-rose-200 px-4 py-3 rounded-lg flex items-center gap-2 text-sm text-rose-700 shrink-0">
-              <AlertTriangle size={16} /> Couldn&apos;t calculate the route. Adjust a stop to retry.
+            <div className="mt-auto bg-rose-50 border border-rose-200 px-4 py-3 rounded-lg flex items-center justify-between gap-2 text-sm text-rose-700 shrink-0">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={16} />
+                <span>Couldn&apos;t calculate the route.</span>
+              </div>
+              {/* Issue 16d: explicit retry button */}
+              <button
+                onClick={handleRetryOsrm}
+                className="flex items-center gap-1 text-xs font-bold underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-rose-500 rounded"
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
             </div>
           )}
           {!osrmLoading && !osrmError && osrm && (
@@ -542,8 +565,11 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
                 <p className="text-lg font-bold text-slate-900">{osrm.distanceKm.toFixed(1)} km</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-primary font-bold uppercase tracking-wide">Est. Duration</p>
+                <p className="text-xs text-primary font-bold uppercase tracking-wide">
+                  {osrm.trafficAware ? 'Traffic-aware ETA' : 'Est. Duration'}
+                </p>
                 <p className="text-lg font-bold text-slate-900">{osrm.durationMin} min</p>
+                {osrm.trafficAware && <p className="text-[10px] text-slate-500">Google live traffic</p>}
               </div>
             </div>
           )}
@@ -573,7 +599,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, buses, drivers,
         <button
           onClick={handleCancel}
           disabled={saving}
-          className="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-200"
+          className="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-200 disabled:opacity-50"
         >
           Cancel
         </button>

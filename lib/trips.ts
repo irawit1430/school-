@@ -40,3 +40,86 @@ export const describeTrip = (trip: any): string => {
     : null;
   return [route, bus && `bus ${bus}`, when].filter(Boolean).join(' · ');
 };
+
+/**
+ * Why a route refused to delete, when the reason is trips.
+ *
+ * The server counts every trip that ever referenced the route, COMPLETED and CANCELLED
+ * included, so the two outcomes mean opposite things to the admin: `active` is something
+ * they can clear and retry, `historical` can never be deleted at all. A single shared
+ * message would tell half of them to keep retrying something that will never work — and
+ * the caller needs the kind, not just the words, to know whether offering a way out is
+ * even honest.
+ *
+ * Duck-typed on purpose so this stays free of the API module: it only needs the status
+ * and the parsed body. Returns null when the refusal is something else, leaving the
+ * caller to show whatever the server said.
+ */
+export type RouteDeleteBlock = {
+  kind: 'active' | 'historical';
+  message: string;
+  activeTripCount: number;
+  tripCount: number;
+};
+
+export const routeDeleteBlock = (error: unknown): RouteDeleteBlock | null => {
+  const failure = error as
+    { status?: number; data?: { code?: string; tripCount?: number; activeTripCount?: number } } | null;
+  if (failure?.status !== 409 || failure.data?.code !== 'ROUTE_HAS_TRIPS') return null;
+
+  const activeTripCount = failure.data.activeTripCount ?? 0;
+  const tripCount = failure.data.tripCount ?? 0;
+  const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+  if (activeTripCount > 0) {
+    return {
+      kind: 'active',
+      activeTripCount,
+      tripCount,
+      message: `This route still has ${count(activeTripCount, 'active trip')}. Cancel ${activeTripCount === 1 ? 'it' : 'them'} to delete the route.`,
+    };
+  }
+  if (tripCount > 0) {
+    return {
+      kind: 'historical',
+      activeTripCount,
+      tripCount,
+      message: `This route has already run ${count(tripCount, 'trip')}, so it can no longer be deleted — that history is attached to it. Leave it unassigned instead.`,
+    };
+  }
+  return null;
+};
+
+/**
+ * The soonest active trip's scheduled start, as a sortable epoch (0 when there is none).
+ *
+ * Deliberately not "the soonest *future* departure": a trip that is running right now
+ * departed in the past, and hiding it would reintroduce the bug where the row went quiet
+ * about the very trip the admin is watching.
+ */
+export const nextDepartureAt = (trips: any[] | null | undefined): number => {
+  const soonest = activeTripsSoonestFirst(trips)[0];
+  return soonest?.scheduledStart ? Date.parse(soonest.scheduledStart) || 0 : 0;
+};
+
+/**
+ * Does this route have a trip matching the admin's bus/driver/status filter?
+ *
+ * Route-level on purpose. The old filter tested one heuristically-chosen "representative"
+ * trip, so filtering by a driver found only the routes where that driver's trip happened
+ * to win the pick — a route they genuinely drive could vanish from their own filter.
+ *
+ * The predicates must hold on the *same* trip: "bus 12 AND delayed" means one trip that
+ * is both, not a route with some delayed trip and some trip on bus 12.
+ */
+export const routeHasMatchingTrip = (
+  trips: any[] | null | undefined,
+  filter: { busId?: string; driverId?: string; status?: string },
+): boolean => {
+  const { busId, driverId, status } = filter;
+  if (!busId && !driverId && !status) return true;
+  return (trips ?? []).some(trip =>
+    (!busId || trip.busId === busId) &&
+    (!driverId || trip.driverId === driverId) &&
+    (!status || trip.status === status));
+};

@@ -16,6 +16,8 @@ export type OsrmResult = {
   distanceKm: number;
   durationMin: number;
   legMinutes: number[]; // per-stop arrival offset from origin
+  provider?: 'osrm' | 'google';
+  trafficAware?: boolean;
 };
 
 export async function fetchOsrmRoute(stops: Stop[]): Promise<OsrmResult | null> {
@@ -39,6 +41,8 @@ export async function fetchOsrmRoute(stops: Stop[]): Promise<OsrmResult | null> 
     distanceKm: route.distance / 1000,
     durationMin: Math.round(route.duration / 60),
     legMinutes,
+    provider: 'osrm',
+    trafficAware: false,
   };
 }
 
