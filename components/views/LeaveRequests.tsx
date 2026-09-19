@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable @next/next/no-img-element */
+ 
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchLeaves, approveLeave, rejectLeave, apiErrorMessage } from '@/lib/api';
@@ -90,24 +90,31 @@ export function LeaveRequests() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState('');
 
+  /**
+   * A failed load used to catch with console.error and nothing else, so the table fell
+   * through to its empty state and announced "No leave requests found — there are no
+   * leave applications matching your current filter." A network blip became a confident,
+   * specific, wrong statement, and the office moved on leaving real requests unanswered.
+   * The last loaded list is kept, because a stale list is honest and an empty one is not.
+   */
   const loadLeaves = () => {
     setLoading(true);
     const apiStatus = statusFilter === 'ALL' ? 'all' : statusFilter.toLowerCase();
     fetchLeaves(apiStatus)
       .then(data => {
+        if (!Array.isArray(data)) throw new Error('Unexpected response from the server.');
         setLeaves(data);
-        setLoading(false);
+        setLoadError('');
       })
-      .catch(err => {
-        console.error('Failed to load leaves:', err);
-        setLoading(false);
-      });
+      .catch(err => setLoadError(apiErrorMessage(err, 'Could not load leave requests.')))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     loadLeaves();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [statusFilter]);
 
   const handleApprove = async (id: string) => {
@@ -188,6 +195,17 @@ export function LeaveRequests() {
         </div>
       </div>
 
+      {loadError && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Couldn&apos;t load leave requests.</p>
+          <p className="mt-0.5">{loadError}</p>
+          {leaves.length > 0 && <p className="mt-1">Showing the last loaded list. Refresh before approving or rejecting.</p>}
+          <button disabled={loading} onClick={loadLeaves} className="mt-2 font-semibold underline disabled:opacity-50">
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-2">
@@ -233,8 +251,14 @@ export function LeaveRequests() {
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                     <FileText size={32} className="mx-auto text-slate-300 mb-3" />
-                    <p className="font-medium text-slate-900">No leave requests found</p>
-                    <p className="text-xs text-slate-500 mt-1">There are no leave applications matching your current filter.</p>
+                    <p className="font-medium text-slate-900">
+                      {loadError ? 'Leave requests are unavailable' : 'No leave requests found'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {loadError
+                        ? 'This is not the same as having none. Use Retry above.'
+                        : 'There are no leave applications matching your current filter.'}
+                    </p>
                   </td>
                 </tr>
               ) : (

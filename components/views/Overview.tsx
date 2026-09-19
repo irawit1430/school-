@@ -1,8 +1,8 @@
 "use client";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
 import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
-import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, Clock } from 'lucide-react';
+import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, RefreshCw } from 'lucide-react';
 import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
 import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
@@ -50,48 +50,65 @@ export function Overview() {
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  // Separate, because a routes outage must not blank the metric cards and a stats
+  // outage must not hide the trips.
+  const [coreError, setCoreError] = useState('');
+  const [tripsError, setTripsError] = useState('');
 
-    useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Routes and drivers only feed the Active Routes widget, and the routes payload
-        // carries every stop on every route. Blocking the metric cards and the map on
-        // them meant the whole dashboard waited for the heaviest call of the five.
-        //
-        // Deliberately NOT ?summary=1: the summary shape has no `trips`, and the widget
-        // below is built entirely from r.trips. Switching this to summary makes the
-        // Active Routes panel silently empty — it renders fine, it just shows nothing.
-        // It needs trips on the summary payload before it can move.
-        Promise.all([fetchRoutes(), fetchDrivers()])
-          .then(([routesData, driversData]) => {
-            setRoutes(routesData);
-            setDrivers(driversData);
-          })
-          .catch(err => console.warn('Failed to load route activity', err));
+  /**
+   * Reloaded on an interval and on focus, because this is the screen most likely left
+   * open on a second monitor all morning — which is what a dashboard is for. It used to
+   * load once on mount and then quietly rot for hours while looking authoritative.
+   */
+  const loadData = useCallback(async () => {
+    setRefreshing(true);
 
-        const [busesData, leavesData, statsData] = await Promise.all([
-          fetchBuses(),
-          fetchLeaves('pending'),
-          fetchStats()
-        ]);
-        setBuses(busesData);
-        setLeaves(leavesData);
-        setStats(statsData);
-      } catch (error) {
-        console.error('Failed to load overview data:', error);
-        toast.error(apiErrorMessage(error, 'Failed to load dashboard data.'));
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
+    // Routes and drivers only feed the Trips in Progress widget, and the routes payload
+    // carries every stop on every route. Blocking the metric cards and the map on them
+    // meant the whole dashboard waited for the heaviest call of the five.
+    //
+    // Deliberately NOT ?summary=1: the summary shape has no `trips`, and the widget is
+    // built entirely from r.trips. Switching this to summary makes the panel silently
+    // empty — it renders fine, it just shows nothing.
+    void Promise.all([fetchRoutes(), fetchDrivers()])
+      .then(([routesData, driversData]) => {
+        setRoutes(Array.isArray(routesData) ? routesData : []);
+        setDrivers(Array.isArray(driversData) ? driversData : []);
+        setTripsError('');
+      })
+      .catch(err => setTripsError(apiErrorMessage(err, 'Trips are unavailable.')));
+
+    try {
+      const [busesData, leavesData, statsData] = await Promise.all([
+        fetchBuses(),
+        fetchLeaves('pending'),
+        fetchStats(),
+      ]);
+      setBuses(Array.isArray(busesData) ? busesData : []);
+      setLeaves(Array.isArray(leavesData) ? leavesData : []);
+      setStats(statsData);
+      setCoreError('');
+      setLastUpdated(new Date());
+    } catch (error) {
+      setCoreError(apiErrorMessage(error, 'Could not load dashboard data.'));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadData();
+    const refreshVisible = () => { if (document.visibilityState !== 'hidden') void loadData(); };
+    const interval = window.setInterval(refreshVisible, 60_000);
+    window.addEventListener('focus', refreshVisible);
+    document.addEventListener('visibilitychange', refreshVisible);
 
     // Socket.io connection for real-time telemetry
     const socket = connectSocket();
-
-    socket.on('connect', () => {
-      console.log('Connected to fleet socket for Dashboard Map');
-    });
 
     const stopPositions = subscribeToBusPositions(socket, batch => {
       setBuses(prev => prev.map(b => {
@@ -101,10 +118,13 @@ export function Overview() {
     });
 
     return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshVisible);
+      document.removeEventListener('visibilitychange', refreshVisible);
       stopPositions();
       socket.disconnect();
     };
-  }, []);
+  }, [loadData]);
 
   const handleApproveLeave = async (id: string) => {
     try {
@@ -158,10 +178,39 @@ export function Overview() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">Overview</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {lastUpdated
+              ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : 'Loading…'}
+            {refreshing && ' · refreshing'}
+          </p>
+        </div>
+        <button
+          onClick={() => void loadData()}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <RefreshCw size={15} className={refreshing ? 'animate-spin' : undefined} /> Refresh
+        </button>
+      </div>
+
+      {coreError && (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-semibold">Couldn&apos;t refresh the dashboard.</p>
+          <p className="mt-0.5">{coreError}</p>
+          {lastUpdated && <p className="mt-1">Figures below are from {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>}
+          <button disabled={refreshing} onClick={() => void loadData()} className="mt-2 font-semibold underline disabled:opacity-50">Retry</button>
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6">
         <MetricCard
           title="Total Students"
+          href="/students"
           value={stats?.totalStudents ?? '—'}
           loading={loading}
           icon={Users}
@@ -169,6 +218,7 @@ export function Overview() {
         />
         <MetricCard
           title="Total Buses"
+          href="/buses"
           value={stats?.totalBuses ?? '—'}
           loading={loading}
           icon={Bus}
@@ -176,6 +226,7 @@ export function Overview() {
         />
         <MetricCard
           title="Total Routes"
+          href="/routes"
           value={stats?.totalRoutes ?? '—'}
           loading={loading}
           icon={Map}
@@ -183,6 +234,7 @@ export function Overview() {
         />
         <MetricCard
           title="GPS Devices Online"
+          href="/map?filter=reporting"
           value={stats?.activeDevices ?? '—'}
           loading={loading}
           icon={CheckCircle}
@@ -190,6 +242,7 @@ export function Overview() {
         />
         <MetricCard
           title="Buses with GPS Offline"
+          href="/map?filter=silent"
           value={stats?.offlineDevices ?? '—'}
           loading={loading}
           icon={AlertTriangle}
@@ -197,6 +250,7 @@ export function Overview() {
         />
         <MetricCard
           title="Pending Leaves"
+          href="/leaves"
           value={stats?.pendingLeaves ?? leaves.length ?? '—'}
           loading={loading}
           icon={CalendarDays}
@@ -210,7 +264,7 @@ export function Overview() {
 
         {/* Active Routes & Recent Leaves (Right Column) */}
         <div className="space-y-4 md:space-y-6 lg:space-y-8">
-          <ActiveRoutesWidget activeTripsList={activeTripsList} />
+          <ActiveRoutesWidget activeTripsList={activeTripsList} error={tripsError} onRetry={() => void loadData()} />
         </div>
       </div>
 

@@ -120,13 +120,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             <Settings size={18} className="text-slate-400" />
             Settings
           </button>
-          <button
-            onClick={() => handleComingSoon('Support')}
+          {/* Was a "coming soon" toast. Support is where someone goes when something has
+              already gone wrong, which is the worst possible moment to have nothing. */}
+          <a
+            href="mailto:support@voltava.in?subject=Voltava%20dashboard%20support"
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors"
           >
             <HelpCircle size={18} className="text-slate-400" />
             Support
-          </button>
+          </a>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors text-rose-400 hover:text-rose-300 hover:bg-slate-800">
             <LogOut size={18} />
             Logout

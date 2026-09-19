@@ -1,8 +1,10 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchBuses, createBus, deleteBus, fetchRoutes, fetchDrivers, createTrip, apiErrorMessage } from '@/lib/api';
-import { Bus, Plus, Trash2, X, Route as RouteIcon } from 'lucide-react';
+import { Bus, Plus, Trash2, X, Route as RouteIcon, Search } from 'lucide-react';
 import { getBusDisplayName, getBusOperationalStatus, getBusRegistration } from '@/lib/buses';
+import { DirectionToggle } from '@/components/ui/DirectionToggle';
+import type { Direction } from '@/lib/runs';
 import toast from 'react-hot-toast';
 
 export function BusesList() {
@@ -11,12 +13,20 @@ export function BusesList() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Seeded from ?q= so a header search result arrives filtered to the bus clicked, rather
+  // than landing on the full list with the name the user just typed nowhere highlighted.
+  const [search, setSearch] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('q') || '';
+  });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ registrationNumber: '', capacity: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignFormData, setAssignFormData] = useState({ busId: '', routeId: '', driverId: '' });
+  const [assignFormData, setAssignFormData] = useState<{ busId: string; routeId: string; driverId: string; direction: Direction | '' }>({ busId: '', routeId: '', driverId: '', direction: '' });
+  const [directionError, setDirectionError] = useState('');
   const [assignBusName, setAssignBusName] = useState('');
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
 
@@ -84,18 +94,24 @@ export function BusesList() {
 
   const handleOpenAssign = (bus: any) => {
     setAssignBusName(bus.registrationNumber);
-    setAssignFormData({ busId: bus.id, routeId: '', driverId: '' });
+    setAssignFormData({ busId: bus.id, routeId: '', driverId: '', direction: '' });
+    setDirectionError('');
     setIsAssignModalOpen(true);
   };
 
   const handleAssignSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!assignFormData.direction) {
+      setDirectionError('Choose a direction.');
+      return;
+    }
     setIsAssignSubmitting(true);
     try {
       await createTrip({
         routeId: assignFormData.routeId,
         busId: assignFormData.busId,
-        driverId: assignFormData.driverId
+        driverId: assignFormData.driverId,
+        direction: assignFormData.direction
       });
       toast.success('Trip created successfully');
       setIsAssignModalOpen(false);
@@ -106,6 +122,12 @@ export function BusesList() {
       setIsAssignSubmitting(false);
     }
   };
+
+  const query = search.trim().toLowerCase();
+  const visibleBuses = query
+    ? buses.filter(bus => [getBusDisplayName(bus), getBusRegistration(bus), bus.routeName]
+        .some(field => String(field ?? '').toLowerCase().includes(query)))
+    : buses;
 
   return (
     <div className="p-6 space-y-6">
@@ -120,6 +142,19 @@ export function BusesList() {
         >
           <Plus size={16} /> Add Bus
         </button>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <label htmlFor="bus-search" className="sr-only">Search buses</label>
+        <input
+          id="bus-search"
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by bus, registration, or route"
+          className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+        />
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -138,12 +173,19 @@ export function BusesList() {
                 <tr>
                   <td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">Loading buses...</td>
                 </tr>
-              ) : buses.length === 0 ? (
+              ) : visibleBuses.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">No buses found. Add one to get started.</td>
+                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500 font-medium">
+                    {buses.length === 0 ? 'No buses found. Add one to get started.' : 'No buses match your search.'}
+                    {buses.length > 0 && (
+                      <button onClick={() => setSearch('')} className="ml-2 font-semibold text-orange-700 underline">
+                        Clear search
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ) : (
-                buses.map((bus) => {
+                visibleBuses.map((bus) => {
                   const displayName = getBusDisplayName(bus);
                   const registration = getBusRegistration(bus);
                   const operationalStatus = getBusOperationalStatus(bus);
@@ -318,6 +360,13 @@ export function BusesList() {
                   ))}
                 </select>
               </div>
+              <DirectionToggle
+                name="bus-trip-direction"
+                value={assignFormData.direction}
+                error={directionError}
+                disabled={isAssignSubmitting}
+                onChange={(direction) => { setAssignFormData({ ...assignFormData, direction }); setDirectionError(''); }}
+              />
               <div className="pt-4 flex gap-3 justify-end">
                 <button 
                   type="button"
