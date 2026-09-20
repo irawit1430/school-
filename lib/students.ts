@@ -170,16 +170,35 @@ export function processStudents(
     // (and every fixture written before this field existed) rendering.
     const mappings = student.mappings ?? [];
 
+    const routeLabel = student.assignedRoute || student.routeName || stop?.route?.name || mappings[0]?.routeName || 'Unassigned';
+
+    /**
+     * Whether creating a mapping for this child would duplicate one that already exists.
+     *
+     * This is a safety question, not a display one — it is the only thing the roster uses
+     * to decide whether "Assign Route & Stop" is offered — so it must be answered from
+     * evidence a mapping exists, never from a leftover label.
+     *
+     * A stop *name* is not evidence. It used to be, and a payload that returns any
+     * non-empty placeholder there (an "N/A", a dash) told the roster a child was assigned
+     * when they had never been, and then blocked the only control that could assign them.
+     * A child registered with no stop at all could not be given one afterwards.
+     *
+     * A record, a stop id, or a route that resolved to something other than the
+     * "Unassigned" fallback all are evidence, and all still block.
+     */
+    const hasAssignment = Boolean(
+      mappings.length || student.routeMappings?.length || student.routeStopId || routeLabel !== 'Unassigned',
+    );
+
     return {
       id: student.id,
       name,
       tag: student.rfidTag || 'N/A',
       grade: student.grade || '—',
-      route: student.assignedRoute || student.routeName || stop?.route?.name || mappings[0]?.routeName || 'Unassigned',
+      route: routeLabel,
       mappings,
-      hasAssignment: Boolean(mappings.length || student.routeStopId || student.routeMappings?.length || student.routeStopName || student.stopName
-        || (student.assignedRoute && student.assignedRoute !== 'Unassigned')
-        || (student.routeName && student.routeName !== 'Unassigned')),
+      hasAssignment,
       routeId: student.routeId || stop?.routeId || stop?.route?.id || mappings[0]?.routeId || null,
       routeStopId: student.routeStopId || mapping?.routeStopId || stop?.id || mappings[0]?.routeStopId || null,
       stopName: student.routeStopName || student.stopName || stop?.name || mappings[0]?.stopName || '',
