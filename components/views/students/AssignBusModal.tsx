@@ -1,5 +1,6 @@
 import React, { useId } from 'react';
 import { StudentDialog } from './StudentDialog';
+import { RouteStopPicker } from './RouteStopPicker';
 import type { StudentMapping } from '@/lib/students';
 
 interface AssignBusModalProps {
@@ -72,17 +73,10 @@ export function AssignBusModal({
             {assignStudent?.tag && assignStudent.tag !== 'N/A' ? ' · RFID: ' + assignStudent.tag : ''}
           </p>
         </div>
-        {routesLoading && <p role="status" className="text-sm text-slate-600">Loading pickup routes and stops...</p>}
-        {routesError && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          <p>{routesError}</p>
-          {onRetryRoutes && <button type="button" onClick={onRetryRoutes} disabled={isAssignSubmitting || routesLoading} className="mt-2 font-semibold underline disabled:opacity-50">Retry loading routes</button>}
-        </div>}
-        {!routesLoading && !routesError && routes.length === 0 && <div role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          <p>No pickup routes are configured. Create a route with pickup stops in Routes, then reload this list.</p>
-          {onRetryRoutes && <button type="button" onClick={onRetryRoutes} disabled={isAssignSubmitting} className="mt-2 font-semibold underline disabled:opacity-50">Retry loading routes</button>}
-        </div>}
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        <fieldset disabled={isAssignSubmitting || routesLoading || !!routesError} className="min-w-0 space-y-4">
+        {/* Not disabled on routesError: the picker renders its own Retry there, and
+            disabling the fieldset would make the one button that fixes it unclickable. */}
+        <fieldset disabled={isAssignSubmitting} className="min-w-0 space-y-4">
           {/* A child with separate morning and afternoon stops holds two mappings; only
               one of them is being moved, so say which. */}
           {mappings.length > 1 && <div>
@@ -99,27 +93,19 @@ export function AssignBusModal({
             <p>Currently: <span className="font-semibold text-slate-900">{editing.routeName} · {editing.stopName}</span></p>
             <p className="mt-1 text-xs text-slate-500">{legLabel(editing.direction)} — unchanged by this move.</p>
           </div>}
-          <div>
-            <label htmlFor={id + '-route'} className="mb-1 block text-sm font-semibold text-slate-700">Select Route <span className="text-red-500" aria-hidden="true">*</span></label>
-            <select id={id + '-route'} required value={assignFormData.routeId} disabled={routes.length === 0}
-              onChange={event => setAssignFormData({ ...assignFormData, routeId: event.target.value, routeStopId: '' })}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-50">
-              <option value="">Select a Route</option>
-              {routes.map(route => <option key={route.id} value={route.id}>{route.name}</option>)}
-            </select>
-            {!routesLoading && !routesError && assignFormData.routeId && !selectedRoute && routes.length > 0 && <p role="status" className="mt-2 text-sm text-amber-800">The selected route is no longer available. Choose another route.</p>}
-          </div>
-          {selectedRoute && <div>
-            <label htmlFor={id + '-stop'} className="mb-1 block text-sm font-semibold text-slate-700">Select Stop <span className="text-red-500" aria-hidden="true">*</span></label>
-            <select id={id + '-stop'} required value={assignFormData.routeStopId} disabled={!stops.length}
-              onChange={event => setAssignFormData({ ...assignFormData, routeStopId: event.target.value })}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-50">
-              <option value="">Select a Stop</option>
-              {stops.map((stop: any) => <option key={stop.id} value={stop.id}>{stop.name}{stop.stopTime ? ' (' + stop.stopTime + ')' : ''}</option>)}
-            </select>
-            {!routesLoading && !routesError && !stops.length && <p role="status" className="mt-2 text-sm text-amber-800">No pickup stops are configured for this route. Add stops in Routes or select a different route.</p>}
-            {unchanged && <p role="status" className="mt-2 text-sm text-slate-600">This is the stop already assigned. Pick a different one to move the child.</p>}
-          </div>}
+          <RouteStopPicker
+            routes={routes}
+            routeId={assignFormData.routeId}
+            routeStopId={assignFormData.routeStopId}
+            onChange={next => setAssignFormData({ ...assignFormData, ...next })}
+            loading={routesLoading}
+            error={routesError}
+            onRetry={onRetryRoutes}
+            required
+            note={unchanged
+              ? <p role="status" className="mt-2 text-sm text-slate-600">This is the stop already assigned. Pick a different one to move the child.</p>
+              : undefined}
+          />
         </fieldset>
         <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
           <button type="button" onClick={onClose} disabled={isAssignSubmitting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>

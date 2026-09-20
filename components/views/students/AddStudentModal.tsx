@@ -1,5 +1,6 @@
 import React, { useId, useState } from 'react';
 import { StudentDialog } from './StudentDialog';
+import { RouteStopPicker } from './RouteStopPicker';
 
 interface AddStudentModalProps {
   onClose: () => void;
@@ -8,9 +9,16 @@ interface AddStudentModalProps {
   setFormData: (data: any) => void;
   isSubmitting: boolean;
   error?: string | null;
+  routes?: any[];
+  routesLoading?: boolean;
+  routesError?: string | null;
+  onRetryRoutes?: () => void;
 }
 
-export function AddStudentModal({ onClose, onSubmit, formData, setFormData, isSubmitting, error }: AddStudentModalProps) {
+export function AddStudentModal({
+  onClose, onSubmit, formData, setFormData, isSubmitting, error,
+  routes = [], routesLoading = false, routesError, onRetryRoutes,
+}: AddStudentModalProps) {
   const id = useId();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fields = [
@@ -69,6 +77,24 @@ export function AddStudentModal({ onClose, onSubmit, formData, setFormData, isSu
               {errors[field.key] && <p id={id + '-' + field.key + '-error'} role="alert" className="mt-1 text-sm text-red-700">{errors[field.key]}</p>}
             </div>
           ))}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="mb-1 text-sm font-semibold text-slate-700">Pickup route &amp; stop</p>
+            <p className="mb-3 text-xs text-slate-500">
+              Optional \u2014 a child can be registered before their route is decided. Which bus
+              collects them follows from the route, so there is no bus to choose here.
+            </p>
+            <div className="space-y-4">
+              <RouteStopPicker
+                routes={routes}
+                routeId={formData.routeId || ''}
+                routeStopId={formData.routeStopId || ''}
+                onChange={next => setFormData({ ...formData, ...next })}
+                loading={routesLoading}
+                error={routesError}
+                onRetry={onRetryRoutes}
+              />
+            </div>
+          </div>
           <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
             <button type="button" onClick={onClose} disabled={isSubmitting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
             <button type="submit" disabled={isSubmitting} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-70">

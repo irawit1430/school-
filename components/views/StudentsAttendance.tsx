@@ -19,7 +19,7 @@ import { useStudentsData } from './students/useStudentsData';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 type Route = { id: string; name: string; stops?: { id: string; name: string; stopTime?: string }[] };
-const emptyStudentForm = { rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '' };
+const emptyStudentForm = { rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '', routeId: '', routeStopId: '' };
 const tabs: { label: string; status?: StudentStatus }[] = [
   { label: 'All Students' }, { label: 'Currently Boarded', status: 'Boarded' },
   { label: 'Dropped Off', status: 'Dropped off' }, { label: 'Did Not Board', status: 'Did not board' },
@@ -125,6 +125,7 @@ export function StudentsAttendance() {
   const openCreate = () => {
     if (writing.current) return;
     setFormData({ ...emptyStudentForm }); setCreateError(null); setIsModalOpen(true);
+    void loadRoutes();
   };
   const loadRoutes = async () => {
     const request = ++routeRequest.current;
@@ -227,7 +228,29 @@ export function StudentsAttendance() {
         guardianPhone: formData.guardianPhone.trim() || undefined });
       setIsModalOpen(false);
       if (result.parentCredentials) setCredentials({ data: result.parentCredentials, operation: 'create', count: 1 });
-      toast.success('Student registered successfully!');
+
+      // The stop is a second call \u2014 the create endpoint takes no routeStopId. So the
+      // child is registered either way, and only the stop can fail. Say which happened
+      // rather than reporting one success for two writes.
+      const newId = result?.id ?? result?.student?.id ?? null;
+      const stopId = formData.routeStopId;
+      if (stopId && newId) {
+        const route = routes.find(item => item.id === formData.routeId);
+        const stop = route?.stops?.find((item: any) => item.id === stopId);
+        try {
+          await assignStudentToStop({ studentId: newId, routeStopId: stopId });
+          setCreatedAssignmentIds(previous => new Set(previous).add(newId));
+          toast.success('Registered ' + name + ' \u00b7 ' + (route?.name ?? 'route') + ' \u00b7 ' + (stop?.name ?? 'stop') + '.');
+        } catch (assignFailure) {
+          toast.error('Registered ' + name + ', but the pickup stop was not saved: '
+            + mappingErrorMessage(assignFailure) + ' Assign it from the roster.');
+        }
+      } else if (stopId && !newId) {
+        // No id came back, so there is nothing to attach the stop to. Do not pretend.
+        toast.error('Registered ' + name + ', but the pickup stop was not saved. Assign it from the roster.');
+      } else {
+        toast.success('Student registered successfully!');
+      }
       void data.refresh(true, true);
     } catch (error) { setCreateError(apiErrorMessage(error, 'Could not register this student.')); }
     finally { writing.current = false; setIsSubmitting(false); }
@@ -423,7 +446,9 @@ export function StudentsAttendance() {
         assignFormData={assignFormData} setAssignFormData={setAssignFormData} isAssignSubmitting={isAssignSubmitting}
         mappings={assignStudent.mappings}
         routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()} error={assignError} />}
-      {isModalOpen && <AddStudentModal onClose={() => { if (!writing.current) setIsModalOpen(false); }} onSubmit={handleSubmit}
+      {isModalOpen && <AddStudentModal
+        routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()}
+        onClose={() => { if (!writing.current) setIsModalOpen(false); }} onSubmit={handleSubmit}
         formData={formData} setFormData={setFormData} isSubmitting={isSubmitting} error={createError} />}
       {isImportModalOpen && <ImportStudentsModal onClose={() => { if (!writing.current) setIsImportModalOpen(false); }}
         onImport={handleImportCSV} isSubmitting={isSubmitting} error={importError} />}
