@@ -222,3 +222,45 @@ test('ignored import fields require acknowledgement and a rejected import retain
   expect(host.querySelector('tbody')!.textContent).toContain('Asha');
   expect(button('Import 1 student').disabled).toBe(false);
 });
+
+test('registration offers a pickup stop but never blocks on one', async () => {
+  const onSubmit = vi.fn();
+  const setFormData = vi.fn();
+  const routes = [{ id: 'route-1', name: 'North Route', stops: [{ id: 'stop-1', name: 'Gandhi Chowk', stopTime: '07:20' }] }];
+  const props = { onClose: vi.fn(), onSubmit, setFormData, isSubmitting: false, routes };
+
+  // A child can be admitted before their route is decided, so no stop must still submit.
+  await render(<AddStudentModal {...props} formData={{ ...validStudent, routeId: '', routeStopId: '' }} />);
+  expect(host.textContent).toContain('Pickup route & stop');
+  // There is deliberately no bus to pick — the bus follows from the route's trips.
+  expect(host.textContent).not.toContain('Select Bus');
+  expect(host.querySelector<HTMLSelectElement>('select[name="routeStopId"]')).toBeNull();
+  await submit();
+  expect(onSubmit).toHaveBeenCalledOnce();
+
+  // Choosing a route reveals its stops and reports both ids back to the form.
+  await render(<AddStudentModal {...props} formData={{ ...validStudent, routeId: 'route-1', routeStopId: '' }} />);
+  const stopSelect = host.querySelector<HTMLSelectElement>('select[name="routeStopId"]')!;
+  expect(stopSelect.textContent).toContain('Gandhi Chowk');
+  await act(async () => {
+    stopSelect.value = 'stop-1';
+    stopSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(setFormData).toHaveBeenCalledWith(expect.objectContaining({ routeId: 'route-1', routeStopId: 'stop-1' }));
+});
+
+test('a broken routes list never stops a student being registered', async () => {
+  const onSubmit = vi.fn();
+  const retry = vi.fn();
+  await render(<AddStudentModal
+    onClose={vi.fn()} onSubmit={onSubmit} setFormData={vi.fn()} isSubmitting={false}
+    formData={{ ...validStudent, routeId: '', routeStopId: '' }}
+    routes={[]} routesError="Routes unavailable" onRetryRoutes={retry}
+  />);
+  expect(host.textContent).toContain('Routes unavailable');
+  await act(async () => button('Retry loading routes').click());
+  expect(retry).toHaveBeenCalledOnce();
+  // The stop is optional, so a routes outage must not hold up the registration itself.
+  await submit();
+  expect(onSubmit).toHaveBeenCalledOnce();
+});
