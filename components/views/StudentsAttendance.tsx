@@ -73,6 +73,10 @@ export function StudentsAttendance() {
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
   // A successful create must stay blocked even if the following roster refresh fails.
   const [createdAssignmentIds, setCreatedAssignmentIds] = useState<Set<string>>(() => new Set());
+  // Rows already reloaded once without the roster producing an assignment record. The
+  // stop is real, but there is no id to edit it by, so stop offering a button that
+  // cannot change anything and say what is actually missing.
+  const [reloadedAssignmentIds, setReloadedAssignmentIds] = useState<Set<string>>(() => new Set());
   const routeRequest = useRef(0);
 
   const [viewStudentId, setViewStudentId] = useState<string | null>(null);
@@ -156,6 +160,16 @@ export function StudentsAttendance() {
     void loadRoutes();
   };
   const closeAssign = () => { if (!writing.current) { routeRequest.current++; setAssignStudent(null); } };
+  // "Refresh to change this assignment" used to be plain text, which told the admin to do
+  // something the row gave them no way to do. Fetching the roster again is the only thing
+  // that can turn a flattened stop into an editable record, so make it the button.
+  //
+  // The created-this-session set is deliberately not cleared: if this refresh fails too,
+  // that entry is all that still stands between a second POST and a child on two rosters.
+  const reloadAssignment = async (studentId: string) => {
+    await data.refresh(true, true);
+    setReloadedAssignmentIds(previous => new Set(previous).add(studentId));
+  };
   const handleAssignSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!assignStudent || writing.current || routesLoading || routesError) return;
@@ -385,7 +399,14 @@ export function StudentsAttendance() {
                       {student.mappings.length
                         ? <button onClick={() => openAssign(student)} className="rounded px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft">Change Route & Stop</button>
                         : student.hasAssignment || createdAssignmentIds.has(student.id)
-                        ? <span className="max-w-40 text-xs text-slate-500">Refresh to change this assignment</span>
+                        ? reloadedAssignmentIds.has(student.id)
+                        ? <span className="max-w-48 text-xs text-slate-500" title="The roster returns this child's stop but not the assignment record behind it, so there is no id to change. Changing it needs that record in the students API; creating a new one instead would put the child on a second driver roster.">
+                            Assigned &middot; no editable record
+                          </span>
+                        : <button onClick={() => void reloadAssignment(student.id)} disabled={data.refreshing}
+                            className="rounded px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft disabled:opacity-50">
+                            {data.refreshing ? 'Reloading…' : 'Reload to change'}
+                          </button>
                         : <button onClick={() => openAssign(student)} className="rounded px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary-soft">Assign Route & Stop</button>}
                       <button onClick={() => setViewStudentId(student.id)} aria-label={'View Student ' + student.name} className="rounded p-2 text-slate-600 hover:bg-slate-100"><Eye size={18} /></button>
                       <button onClick={() => openMessage(student)} disabled={!student.parentId} title={student.parentId ? 'Message parent' : 'No parent account linked. View the profile for guardian contact details.'}

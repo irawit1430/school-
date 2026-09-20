@@ -251,3 +251,25 @@ test('a child with morning and afternoon stops moves only the leg the admin pick
   await submit();
   expect(api.updateStudentMapping).toHaveBeenCalledExactlyOnceWith('m2', { routeStopId: 's1' });
 });
+
+test('a flattened assignment offers a reload, then says plainly there is no record to edit', async () => {
+  // The roster names the stop but returns no mapping row, so there is no id to PUT to.
+  vi.mocked(api.fetchStudents).mockResolvedValue([{ ...students[0], assignedRoute: 'South', routeStopName: 'Library' }, students[1]]);
+  await render();
+  // This used to be plain text telling the admin to refresh, which the row gave them no
+  // way to do — and which would not have helped, because the payload never changes.
+  await click(button('Reload to change', row('Asha')));
+  expect(row('Asha').textContent).toContain('no editable record');
+  expect([...row('Asha').querySelectorAll('button')].some(item => item.textContent?.includes('Reload to change'))).toBe(false);
+  // Still never a second POST: that is what would put the child on two driver rosters.
+  expect(api.assignStudentToStop).not.toHaveBeenCalled();
+});
+
+test('a reload that does return the mapping record makes the assignment changeable again', async () => {
+  vi.mocked(api.fetchStudents)
+    .mockResolvedValueOnce([{ ...students[0], assignedRoute: 'North', routeStopName: 'Gate' }, students[1]])
+    .mockResolvedValue([structuredClone(assignedAsha), students[1]]);
+  await render();
+  await click(button('Reload to change', row('Asha')));
+  expect(button('Change Route & Stop', row('Asha'))).toBeTruthy();
+});
