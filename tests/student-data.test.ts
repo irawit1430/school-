@@ -192,3 +192,39 @@ describe('what a bus is actually carrying', () => {
     expect(rosterForRoute(legacy, 'r1').expected).toBe(1);
   });
 });
+
+describe('whether a child can still be given a stop', () => {
+  // The roster offers "Assign Route & Stop" only when hasAssignment is false, so anything
+  // that sets it wrongly does not just mislabel a row — it removes the only way to fix it.
+  const unassigned = (extra: Record<string, unknown>) =>
+    processStudents([{ id: 's1', name: 'Anaya', ...extra }], [], now)[0];
+
+  it('a placeholder stop name does not count as an assignment', () => {
+    // A child registered with no stop came back carrying a placeholder here, which read
+    // as "already assigned" and then blocked the control that would have assigned them.
+    for (const placeholder of ['N/A', '—', 'None', 'No stop', '-']) {
+      expect(unassigned({ stopName: placeholder }).hasAssignment).toBe(false);
+      expect(unassigned({ routeStopName: placeholder }).hasAssignment).toBe(false);
+    }
+  });
+
+  it('a child with nothing at all can be assigned', () => {
+    const student = unassigned({});
+    expect(student.hasAssignment).toBe(false);
+    expect(student.route).toBe('Unassigned');
+  });
+
+  it('still refuses a second mapping on any real evidence of a first', () => {
+    // Each of these is a record or an id, or a route that resolved to a real name.
+    expect(unassigned({ routeStopId: 'rs1' }).hasAssignment).toBe(true);
+    expect(unassigned({ routeMappings: [{ routeStopId: 'rs1' }] }).hasAssignment).toBe(true);
+    expect(unassigned({ mappings: [{ id: 'm1', routeStopId: 'rs1', routeId: 'r1', routeName: 'North', stopName: 'Gate', direction: null }] }).hasAssignment).toBe(true);
+    expect(unassigned({ assignedRoute: 'South', routeStopName: 'Library' }).hasAssignment).toBe(true);
+    expect(unassigned({ routeName: 'North' }).hasAssignment).toBe(true);
+  });
+
+  it('an explicitly Unassigned route label is not evidence', () => {
+    expect(unassigned({ assignedRoute: 'Unassigned', stopName: 'N/A' }).hasAssignment).toBe(false);
+    expect(unassigned({ routeName: 'Unassigned' }).hasAssignment).toBe(false);
+  });
+});
