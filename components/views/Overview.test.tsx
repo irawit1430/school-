@@ -6,7 +6,10 @@ import React from 'react';
 import * as api from '@/lib/api';
 
 // Mock the API module
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  // Keep the real apiErrorMessage, so this exercises the message an admin sees.
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  connectSocket: vi.fn(),
   fetchBuses: vi.fn(),
   fetchLeaves: vi.fn(),
   fetchStats: vi.fn(),
@@ -16,12 +19,17 @@ vi.mock('@/lib/api', () => ({
   rejectLeave: vi.fn(),
 }));
 
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }));
+
 describe('Overview', () => {
   let consoleErrorMock: any;
-  let alertMock: any;
 
   beforeEach(() => {
     vi.resetAllMocks();
+
+    // The live-position feed; nothing is emitted in these tests.
+    (api.connectSocket as any).mockReturnValue({ on: vi.fn(), off: vi.fn(), disconnect: vi.fn() });
 
     (api.fetchBuses as any).mockResolvedValue([]);
     (api.fetchStats as any).mockResolvedValue({});
@@ -37,7 +45,6 @@ describe('Overview', () => {
     ]);
 
     consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
-    alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -58,7 +65,7 @@ describe('Overview', () => {
     await waitFor(() => {
       expect(api.approveLeave).toHaveBeenCalledWith('leave-1');
       expect(consoleErrorMock).toHaveBeenCalledWith(testError);
-      expect(alertMock).toHaveBeenCalledWith('Failed to approve leave');
+      expect(toastError).toHaveBeenCalledWith('API Error');
     });
   });
 });

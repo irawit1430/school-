@@ -5,11 +5,16 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import * as api from '@/lib/api';
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  // Keep the real apiErrorMessage, so these tests exercise the message an admin sees.
+  ...(await importOriginal<typeof import('@/lib/api')>()),
   fetchLeaves: vi.fn(),
   approveLeave: vi.fn(),
   rejectLeave: vi.fn(),
 }));
+
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
+vi.mock('react-hot-toast', () => ({ default: { error: toastError, success: vi.fn() } }));
 
 describe('LeaveRequests', () => {
   const mockLeaves = [
@@ -40,12 +45,10 @@ describe('LeaveRequests', () => {
   ];
 
   beforeEach(() => {
+    toastError.mockClear();
     (api.fetchLeaves as any).mockResolvedValue(mockLeaves);
     (api.approveLeave as any).mockResolvedValue({ success: true });
     (api.rejectLeave as any).mockResolvedValue({ success: true });
-
-    // Mock global alert
-    global.alert = vi.fn();
 
     // Mock console.error
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -167,9 +170,12 @@ describe('LeaveRequests', () => {
 
     render(<LeaveRequests />);
 
-    await waitFor(() => {
-      expect(console.error).toHaveBeenCalledWith('Failed to load leaves:', error);
-    });
+    // A failed load must say so, not fall through to "No leave requests found".
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't load leave requests.");
+    expect(alert).toHaveTextContent('API Error');
+    expect(screen.getByText('Leave requests are unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('No leave requests found')).not.toBeInTheDocument();
   });
 
   it('handles approval errors gracefully', async () => {
@@ -187,7 +193,7 @@ describe('LeaveRequests', () => {
 
     await waitFor(() => {
       expect(console.error).toHaveBeenCalledWith(error);
-      expect(global.alert).toHaveBeenCalledWith('Failed to approve leave');
+      expect(toastError).toHaveBeenCalledWith('Approval Error');
     });
   });
 
@@ -206,7 +212,7 @@ describe('LeaveRequests', () => {
 
     await waitFor(() => {
       expect(console.error).toHaveBeenCalledWith(error);
-      expect(global.alert).toHaveBeenCalledWith('Failed to reject leave');
+      expect(toastError).toHaveBeenCalledWith('Rejection Error');
     });
   });
 });

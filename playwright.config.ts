@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
+  // tests/ also holds vitest unit tests (*.test.ts[x]). Playwright must only collect
+  // its own specs, or it tries to load vitest under CommonJS and aborts the whole run.
+  testMatch: '**/*.spec.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

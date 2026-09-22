@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchBuses, fetchRoutes, assignStudentToStop, createStudent, API_BASE } from './api';
+import {
+  fetchBuses,
+  fetchRoutes,
+  assignStudentToStop,
+  createStudent,
+  API_BASE,
+  clearApiCache,
+  clearSchoolIdCache,
+} from './api';
+import { CONFIG } from './config';
 
 // Mock localStorage
 const localStorageMock = (() => {
@@ -8,6 +17,9 @@ const localStorageMock = (() => {
     getItem: vi.fn((key: string) => store[key] || null),
     setItem: vi.fn((key: string, value: string) => {
       store[key] = value.toString();
+    }),
+    removeItem: vi.fn((key: string) => {
+      delete store[key];
     }),
     clear: vi.fn(() => {
       store = {};
@@ -19,42 +31,66 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 });
 
+// Read the key from config rather than hardcoding it: these tests went stale once
+// already when the key was namespaced from 'user' to 'voltava_user'.
+const setUser = (user: object) =>
+  localStorageMock.setItem(CONFIG.USER_STORAGE_KEY, JSON.stringify(user));
+
 // Mock fetch
 global.fetch = vi.fn();
 
-describe('fetchBuses', () => {
-  beforeEach(() => {
-    localStorageMock.clear();
-    vi.mocked(global.fetch).mockReset();
-  });
+const ok = (body: unknown) =>
+  ({ ok: true, status: 200, json: async () => body }) as Response;
 
+const failed = (status: number, body?: unknown) =>
+  ({
+    ok: false,
+    status,
+    json: async () => {
+      if (body === undefined) throw new SyntaxError('Unexpected end of JSON input');
+      return body;
+    },
+  }) as Response;
+
+const authedGet = {
+  cache: 'no-store',
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: 'Bearer fake-token',
+  },
+  body: undefined,
+};
+
+beforeEach(() => {
+  localStorageMock.clear();
+  vi.mocked(global.fetch).mockReset();
+  // GETs are cached for 30s and the SUPER_ADMIN school lookup for the session; without
+  // clearing both, one test's response is served to the next.
+  clearApiCache();
+  clearSchoolIdCache();
+});
+
+describe('fetchBuses', () => {
   it('should fetch buses successfully when schoolId is present in user localStorage', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    setUser({ schoolId: 'school-123' });
     localStorageMock.setItem('token', 'fake-token');
 
     const mockBuses = [{ id: 'bus-1', name: 'Bus 1' }];
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockBuses,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockBuses));
 
     // Execute
     const result = await fetchBuses();
 
     // Assert
     expect(result).toEqual(mockBuses);
-    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/buses`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-token',
-      },
-    });
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/buses`, authedGet);
   });
 
   it('should throw an error when schoolId is missing', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+    setUser({ role: 'TEACHER' });
 
     // Execute & Assert
     await expect(fetchBuses()).rejects.toThrow('No school ID found');
@@ -63,32 +99,23 @@ describe('fetchBuses', () => {
 
   it('should throw an error when fetch fails', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
-
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-    } as Response);
+    setUser({ schoolId: 'school-123' });
+    vi.mocked(global.fetch).mockResolvedValueOnce(failed(500));
 
     // Execute & Assert
-    await expect(fetchBuses()).rejects.toThrow('Failed to fetch buses');
+    await expect(fetchBuses()).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
   });
 
   it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ role: 'SUPER_ADMIN' }));
+    setUser({ role: 'SUPER_ADMIN' });
 
     // First fetch for school ID
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'super-school-1' }],
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok([{ id: 'super-school-1' }]));
 
     // Second fetch for buses
     const mockBuses = [{ id: 'bus-2', name: 'Bus 2' }];
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockBuses,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockBuses));
 
     // Execute
     const result = await fetchBuses();
@@ -102,38 +129,25 @@ describe('fetchBuses', () => {
 });
 
 describe('fetchRoutes', () => {
-  beforeEach(() => {
-    localStorageMock.clear();
-    vi.mocked(global.fetch).mockReset();
-  });
-
   it('should fetch routes successfully when schoolId is present in user localStorage', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    setUser({ schoolId: 'school-123' });
     localStorageMock.setItem('token', 'fake-token');
 
     const mockRoutes = [{ id: 'route-1', name: 'Route 1' }];
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockRoutes,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockRoutes));
 
     // Execute
     const result = await fetchRoutes();
 
     // Assert
     expect(result).toEqual(mockRoutes);
-    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/routes`, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-token',
-      },
-    });
+    expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/routes`, authedGet);
   });
 
   it('should throw an error when schoolId is missing', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+    setUser({ role: 'TEACHER' });
 
     // Execute & Assert
     await expect(fetchRoutes()).rejects.toThrow('No school ID found');
@@ -142,32 +156,23 @@ describe('fetchRoutes', () => {
 
   it('should throw an error when fetch fails', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
-
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-    } as Response);
+    setUser({ schoolId: 'school-123' });
+    vi.mocked(global.fetch).mockResolvedValueOnce(failed(500));
 
     // Execute & Assert
-    await expect(fetchRoutes()).rejects.toThrow('Failed to fetch routes');
+    await expect(fetchRoutes()).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
   });
 
   it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ role: 'SUPER_ADMIN' }));
+    setUser({ role: 'SUPER_ADMIN' });
 
     // First fetch for school ID
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'super-school-1' }],
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok([{ id: 'super-school-1' }]));
 
     // Second fetch for routes
     const mockRoutes = [{ id: 'route-2', name: 'Route 2' }];
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockRoutes,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockRoutes));
 
     // Execute
     const result = await fetchRoutes();
@@ -181,26 +186,24 @@ describe('fetchRoutes', () => {
 });
 
 describe('assignStudentToStop', () => {
+  const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
+
   beforeEach(() => {
-    localStorageMock.clear();
-    vi.mocked(global.fetch).mockReset();
     localStorageMock.setItem('token', 'fake-token');
   });
 
-  it('should return success and text when json parsing fails on success response', async () => {
+  it('should return parsed json on successful assignment', async () => {
     // Setup
-    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      text: async () => 'Invalid JSON Response',
-    } as Response);
+    const mockResponse = { success: true, data: 'assigned' };
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockResponse));
 
     // Execute
     const result = await assignStudentToStop(mockData);
 
     // Assert
-    expect(result).toEqual({ success: true, text: 'Invalid JSON Response' });
+    expect(result).toEqual(mockResponse);
     expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/student-route-mappings`, {
+      cache: 'no-store',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -210,83 +213,61 @@ describe('assignStudentToStop', () => {
     });
   });
 
-  it('should ignore text parsing errors on failure and throw default error', async () => {
-    // Setup
-    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
+  it('should not throw when a successful response has no parseable body', async () => {
+    // Setup — an empty 200/204 is still a successful assignment.
     vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: async () => { throw new Error('Text reading error'); },
+      ok: true,
+      status: 204,
+      json: async () => { throw new SyntaxError('Unexpected end of JSON input'); },
     } as Response);
 
     // Execute & Assert
-    await expect(assignStudentToStop(mockData)).rejects.toThrow('Failed to assign student');
+    await expect(assignStudentToStop(mockData)).resolves.toEqual({});
   });
 
-  it('should include truncated error text on failure', async () => {
-    // Setup
-    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
-    const longErrorText = 'A'.repeat(150);
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 400,
-      text: async () => longErrorText,
-    } as Response);
+  it("should surface the server's error message and status on failure", async () => {
+    // Setup — a conflict names the stop the child already occupies; the admin needs that.
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      failed(409, { error: 'Student is already assigned to Stop 4', code: 'MAPPING_EXISTS' })
+    );
 
     // Execute & Assert
-    await expect(assignStudentToStop(mockData)).rejects.toThrow(`Failed to assign student (HTTP 400): ${'A'.repeat(100)}`);
+    await expect(assignStudentToStop(mockData)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 409,
+      message: 'Student is already assigned to Stop 4',
+      data: { code: 'MAPPING_EXISTS' },
+    });
   });
 
-  it('should return parsed json on successful assignment', async () => {
+  it('should carry validation issues from a 400', async () => {
     // Setup
-    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
-    const mockResponse = { success: true, data: 'assigned' };
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      text: async () => JSON.stringify(mockResponse),
-    } as Response);
+    const issues = [{ path: 'routeStopId', message: 'routeStopId is required' }];
+    vi.mocked(global.fetch).mockResolvedValueOnce(failed(400, { error: 'Validation failed', issues }));
 
-    // Execute
-    const result = await assignStudentToStop(mockData);
-
-    // Assert
-    expect(result).toEqual(mockResponse);
+    // Execute & Assert
+    await expect(assignStudentToStop(mockData)).rejects.toMatchObject({ status: 400, issues });
   });
 
-  it('should return success true on empty text response', async () => {
+  it('should fall back to the HTTP status when the failure body is unreadable', async () => {
     // Setup
-    const mockData = { studentId: 'student-1', routeStopId: 'stop-1' };
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      text: async () => '',
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(failed(500));
 
-    // Execute
-    const result = await assignStudentToStop(mockData);
-
-    // Assert
-    expect(result).toEqual({ success: true });
+    // Execute & Assert
+    await expect(assignStudentToStop(mockData)).rejects.toMatchObject({ status: 500, message: 'HTTP 500' });
   });
 });
 
 describe('createStudent', () => {
-  beforeEach(() => {
-    localStorageMock.clear();
-    vi.mocked(global.fetch).mockReset();
-  });
-
   it('should create a student successfully when schoolId is present', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    setUser({ schoolId: 'school-123' });
     localStorageMock.setItem('token', 'fake-token');
 
     const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe', grade: '10' };
     const mockResponse = { id: 'student-1', ...mockStudentData };
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockResponse));
 
     // Execute
     const result = await createStudent(mockStudentData);
@@ -294,6 +275,7 @@ describe('createStudent', () => {
     // Assert
     expect(result).toEqual(mockResponse);
     expect(global.fetch).toHaveBeenCalledWith(`${API_BASE}/schools/school-123/students`, {
+      cache: 'no-store',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -305,7 +287,7 @@ describe('createStudent', () => {
 
   it('should throw an error when schoolId is missing', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ role: 'TEACHER' }));
+    setUser({ role: 'TEACHER' });
 
     const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe' };
 
@@ -316,14 +298,12 @@ describe('createStudent', () => {
 
   it('should throw an error when fetch fails', async () => {
     // Setup
-    localStorageMock.setItem('user', JSON.stringify({ schoolId: 'school-123' }));
+    setUser({ schoolId: 'school-123' });
     const mockStudentData = { rfidTag: 'tag-1', name: 'John Doe' };
 
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-    } as Response);
+    vi.mocked(global.fetch).mockResolvedValueOnce(failed(500));
 
     // Execute & Assert
-    await expect(createStudent(mockStudentData)).rejects.toThrow('Failed to create student');
+    await expect(createStudent(mockStudentData)).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
   });
 });
