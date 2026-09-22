@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
 import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
+import { leaveDays, formatDay, type LeaveDates } from '@/lib/leaves';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, RefreshCw } from 'lucide-react';
 import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
@@ -10,10 +11,9 @@ import { RecentLeavesWidget } from './overview/RecentLeavesWidget';
 
 // --- TypeScript Interfaces add kiye gaye hain ---
 interface Student { name: string; }
-interface Leave {
+interface Leave extends LeaveDates {
   id: string;
   student?: Student;
-  startDate: string;
   reason: string;
 }
 interface Trip {
@@ -156,7 +156,7 @@ export function Overview() {
       id: leave.id,
       student: leave.student?.name || 'Unknown',
       initials: (leave.student?.name || 'U').substring(0, 2).toUpperCase(),
-      date: new Date(leave.startDate).toLocaleDateString(),
+      date: formatDay(leaveDays(leave).start),
       reason: leave.reason,
       color: "bg-orange-100 text-orange-700",
       rawId: leave.id

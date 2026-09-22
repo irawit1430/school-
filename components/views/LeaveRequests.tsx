@@ -4,6 +4,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchLeaves, approveLeave, rejectLeave, apiErrorMessage } from '@/lib/api';
+import { leaveDays, formatDay } from '@/lib/leaves';
 import { CheckCircle, XCircle, Clock, Filter, Download, User, Calendar, FileText } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
@@ -153,8 +154,9 @@ export function LeaveRequests() {
     const rows = leaves.map((leave: any) => {
       const studentName = leave.student?.name || 'Unknown';
       const rfid = leave.student?.rfidTag || 'N/A';
-      const startDate = new Date(leave.startDate).toLocaleDateString();
-      const endDate = new Date(leave.endDate).toLocaleDateString();
+      const days = leaveDays(leave);
+      const startDate = formatDay(days.start);
+      const endDate = formatDay(days.end);
       const status = leave.status || 'PENDING';
       return [studentName, rfid, startDate, endDate, leave.reason, status].map(escape).join(',');
     });
@@ -265,8 +267,9 @@ export function LeaveRequests() {
                 leaves.map((leave) => {
                   const studentName = leave.student?.name || 'Unknown Student';
                   const initials = studentName.substring(0, 2).toUpperCase();
-                  const startDate = new Date(leave.startDate).toLocaleDateString();
-                  const endDate = new Date(leave.endDate).toLocaleDateString();
+                  const days = leaveDays(leave);
+                  const startDate = formatDay(days.start);
+                  const endDate = formatDay(days.end);
                   const isPending = leave.status?.toUpperCase() === 'PENDING';
                   
                   return (

@@ -89,6 +89,30 @@ describe('LeaveRequests', () => {
     expect(screen.getByText('Vacation')).toBeInTheDocument();
   });
 
+  it("shows a leave on the school's calendar day, whatever the browser timezone", async () => {
+    // One day of leave on 20 Aug in IST, exactly as the API returns it. Formatting the
+    // instants in the browser's timezone showed this as 19 Aug to 20 Aug west of IST.
+    (api.fetchLeaves as any).mockResolvedValue([{
+      id: '4',
+      student: { name: 'Dev Patel', rfidTag: 'D012' },
+      startDate: '2026-08-19T18:30:00.000Z',
+      endDate: '2026-08-20T18:29:59.999Z',
+      startDay: '2026-08-20',
+      endDay: '2026-08-20',
+      timezone: 'Asia/Kolkata',
+      reason: 'Unwell',
+      status: 'PENDING',
+    }]);
+
+    render(<LeaveRequests />);
+
+    await screen.findByText('Dev Patel');
+    const row = screen.getByText('Dev Patel').closest('tr')!;
+    expect(row).toHaveTextContent(new Date(2026, 7, 20).toLocaleDateString());
+    expect(row).not.toHaveTextContent(new Date(2026, 7, 19).toLocaleDateString());
+    expect(row).not.toHaveTextContent(/\bto\b/);
+  });
+
   it('filters leave requests by status', async () => {
     render(<LeaveRequests />);
 
