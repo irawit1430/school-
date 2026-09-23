@@ -5,7 +5,7 @@
 This application is the **School Admin Dashboard** for Voltava's fleet management system. It is built using **Next.js 15 (App Router)** and **React**, styled with **Tailwind CSS**.
 
 - **Frontend**: Next.js client-side application (using `"use client"` heavily as it's a SPA-like dashboard).
-- **Backend API**: Connects to a live backend REST API hosted at `https://gps-backend-jzd7.onrender.com/api`.
+- **Backend API**: Connects to the `gps-backend` REST API at `NEXT_PUBLIC_API_BASE_URL` (default `https://api.voltava.in`, see `lib/config.ts`). The old onrender.com host is no longer used.
 - **Authentication**: JWT-based authentication. Users log in with email/password. The `token` and `user` data (including their `schoolId` and `role`) are stored securely in `localStorage`. All subsequent protected API requests include the `Authorization: Bearer <token>` header.
 - **Real-Time WebSockets**: The app relies on `socket.io-client` connecting to the backend to receive live telemetry (`location_update`) for bus GPS tracking on maps, and instant SOS broadcasts (`emergency_alert`) from drivers.
 
@@ -30,7 +30,7 @@ The application has been actively transitioning from a static prototype to a ful
 ### What is MOCK (Fallback / Hardcoded):
 - **UI Fallbacks (`lib/mock-data.ts`)**: Some components still import mock arrays (e.g., `mockStudents`, `studentAlerts`). This is primarily used as a fallback if the live database is empty, ensuring the UI doesn't look blank during testing or presentations.
 - **Map Polyline/Route Data**: While live bus locations are intended to be real, the drawn route paths on the map might still use hardcoded GPS coordinates for demonstration purposes.
-- **Staging Data**: The backend itself might be returning "simulated" alerts or staging data if real hardware (like TM-100 GPS trackers or RFID scanners) isn't actively generating logs.
+- **Staging Data**: The backend itself might be returning "simulated" alerts or staging data if real hardware (like TM-100 GPS trackers or the driver app's QR card scanner) isn't actively generating logs.
 
 ---
 
@@ -40,7 +40,7 @@ The primary objective of this dashboard is to act as the **Central Command Cente
 
 **Core Objectives:**
 1. **Live Fleet Visibility**: Allow admins to track every bus in real-time on a map to monitor delays or off-route deviations.
-2. **Student Safety & Attendance**: Provide an accurate, real-time log of which students have boarded or exited the bus (typically via RFID hardware integration).
+2. **Student Safety & Attendance**: Provide an accurate, real-time log of which students have boarded or exited the bus (the driver app scans each child's QR card; `rfidTag` is a legacy field).
 3. **Operational Efficiency**: Give admins the tools to manage routes, assign drivers to buses, and handle parent leave requests efficiently.
 4. **Emergency Response**: Create an instant alert system where driver SOS signals immediately notify the school admin for rapid response.
 5. **Analytics**: Deliver actionable metrics (e.g., offline devices, delayed routes, student boarding counts) to help optimize the school's fleet over time.
