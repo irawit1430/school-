@@ -7,6 +7,7 @@ import {
   API_BASE,
   clearApiCache,
   clearSchoolIdCache,
+  updatePassword,
 } from './api';
 import { CONFIG } from './config';
 
@@ -305,5 +306,28 @@ describe('createStudent', () => {
 
     // Execute & Assert
     await expect(createStudent(mockStudentData)).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
+  });
+});
+
+describe('updatePassword', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    setUser({ id: 'admin-1', role: 'SCHOOL_ADMIN', schoolId: 'school-1' });
+    localStorageMock.setItem('token', 'old-token');
+  });
+
+  it('checks the current password and keeps the admin signed in with the new token', async () => {
+    // The old token is revoked by the change. It used to be kept, so the very next
+    // request came back 401 and the admin was sent to the login page.
+    (global.fetch as any).mockResolvedValueOnce(ok({ message: 'Password updated successfully', token: 'new-token' }));
+
+    await updatePassword('current-pass', 'new-pass-1234');
+
+    const [url, init] = (global.fetch as any).mock.calls[0];
+    expect(url).toBe(`${API_BASE}/auth/change-password`);
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ oldPassword: 'current-pass', newPassword: 'new-pass-1234' });
+    expect(localStorageMock.getItem('token')).toBe('new-token');
   });
 });

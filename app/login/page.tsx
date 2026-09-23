@@ -117,7 +117,8 @@ export default function LoginPage() {
     setIsLoading(true);
     setApiError(null);
     try {
-      await updatePassword(newPassword);
+      // `password` is still the one they just signed in with.
+      await updatePassword(password, newPassword);
 
       // The user is already authenticated at this point — clear the flag locally
       // so the dashboard does not bounce them straight back here.

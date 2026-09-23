@@ -197,7 +197,8 @@ describe('LoginPage forced password reset', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Set password/i }));
 
-    await waitFor(() => expect(updatePassword).toHaveBeenCalledWith('newpass1234'));
+    // With the password they signed in with, which the server checks.
+    await waitFor(() => expect(updatePassword).toHaveBeenCalledWith('hunter2', 'newpass1234'));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/'));
   });
 

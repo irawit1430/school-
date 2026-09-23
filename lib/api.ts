@@ -252,10 +252,23 @@ export async function login(email: string, password: string) {
   return data.user;
 }
 
-export async function updatePassword(password: string) {
+/**
+ * Change the signed-in admin's own password.
+ *
+ * Goes through change-password, which checks the current password and hands back a
+ * replacement token. A password change revokes every token issued before it, this
+ * one included, so keeping the old token signed the admin out on their very next
+ * request ("Session expired") straight after choosing a password.
+ */
+export async function updatePassword(currentPassword: string, newPassword: string) {
   const user = getUser();
   if (!user) throw new ApiError('Not authenticated', 401);
-  return api(`/users/me`, { method: 'PUT', body: { password } });
+  const data = await api<{ token?: string }>(`/auth/change-password`, {
+    method: 'POST',
+    body: { oldPassword: currentPassword, newPassword },
+  });
+  if (data?.token) setToken(data.token);
+  return data;
 }
 
 // ─── Authenticated Socket.IO ───────────────────────────────
