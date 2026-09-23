@@ -12,6 +12,15 @@ export interface AppNotification {
 
 const EMERGENCY_TYPES = new Set(['DRIVER_SOS', 'HARDWARE_SOS', 'SOS', 'DELAY']);
 
+/**
+ * A "Forgot password" request the office can act on. The server tags new ones with
+ * context.type; rows from before that carry only the title.
+ */
+export const isPasswordResetNotification = (n: AppNotification): boolean =>
+  (n as any)?.context?.type === 'PASSWORD_RESET' ||
+  n.type === 'PASSWORD_RESET' ||
+  n.title === 'Password reset requested';
+
 const defaultTitle = (type: string): string => {
   if (type === 'DELAY') return 'Route delay';
   if (EMERGENCY_TYPES.has(type)) return 'Emergency alert';

@@ -9,10 +9,11 @@ import { useRouter } from 'next/navigation';
 import { API_BASE } from '@/lib/api';
 import { clsx } from 'clsx';
 import { CONFIG } from '@/lib/config';
-import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, clearApiCache, logoutUser, connectSocket, updateParentPassword, apiErrorMessage } from '@/lib/api';
+import { fetchNotifications as fetchNotifs, markAllNotificationsRead, markNotificationRead, resolveAlert, searchGlobal, getUser, getToken, clearAuth, clearApiCache, logoutUser, connectSocket, apiErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { avatarFor } from '@/lib/avatar';
-import { AppNotification, isActiveEmergency, isEmergencyNotification, mergeNotification, normalizeNotification } from '@/lib/notifications';
+import { AppNotification, isActiveEmergency, isEmergencyNotification, isPasswordResetNotification, mergeNotification, normalizeNotification } from '@/lib/notifications';
+import { PasswordRequestsModal } from '@/components/views/PasswordRequestsModal';
 
 interface HeaderProps {
   title?: string;
@@ -48,6 +49,7 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const skipPollUntil = useRef<number>(0);
+  const [showPasswordRequests, setShowPasswordRequests] = useState(false);
 
   useEffect(() => {
     // Populate user details from local storage
@@ -214,21 +216,18 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     }
   };
 
-  const handleResetPassword = async (notif: AppNotification, e: React.MouseEvent) => {
+  // A "Forgot password" notification opens the list of waiting requests, where the server
+  // makes the temporary password. The old button looked for a notification type and a
+  // user id the server never sent, so it never appeared, and it asked the admin to
+  // invent a password in a browser prompt and then showed it in a toast.
+  const handleResetPassword = (notif: AppNotification, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!token || !notif.metadata?.userId) return;
-    
-    const newPassword = window.prompt('Enter new temporary password:');
-    if (!newPassword) return;
-    
-    try {
-      await updateParentPassword(notif.metadata.userId, newPassword);
-      toast.success(`Password reset successful. Temporary password is: ${newPassword}`, { duration: 6000 });
-      await markNotificationRead(notif.id);
+    setShowNotifDropdown(false);
+    setShowPasswordRequests(true);
+    if (!notif.isRead) {
       setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, isRead: true } : n));
-    } catch (error) {
-      toast.error(apiErrorMessage(error, 'Failed to reset password.'));
-      console.error('Failed to reset password:', error);
+      // Best effort: a notification that arrived live has no stored id yet.
+      markNotificationRead(notif.id).catch(() => {});
     }
   };
 
@@ -417,12 +416,12 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1 self-start">
-                              {notif.type === 'PASSWORD_RESET' && !notif.isRead ? (
+                              {isPasswordResetNotification(notif) ? (
                                 <button 
                                   onClick={(e) => handleResetPassword(notif, e)}
-                                  className="sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 text-xs font-semibold text-orange-600 hover:text-orange-700 transition-opacity whitespace-nowrap"
+                                  className="text-xs font-semibold text-orange-600 hover:text-orange-700 whitespace-nowrap"
                                 >
-                                  Reset Password
+                                  Handle request
                                 </button>
                               ) : !emergency && !notif.isRead ? (
                                 <button 
@@ -479,6 +478,7 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
           </div>
         </div>
       </div>
+      <PasswordRequestsModal open={showPasswordRequests} onClose={() => setShowPasswordRequests(false)} />
     </header>
   );
 }

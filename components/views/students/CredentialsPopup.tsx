@@ -6,7 +6,7 @@ import { StudentDialog } from './StudentDialog';
 interface CredentialsPopupProps {
   credentialsPopup: any;
   setCredentialsPopup: (val: any) => void;
-  operation?: 'create' | 'import';
+  operation?: 'create' | 'import' | 'reset';
   importedCount?: number;
 }
 
@@ -36,13 +36,19 @@ export function CredentialsPopup({ credentialsPopup, setCredentialsPopup, operat
 
   return (
     <StudentDialog
-      title={<span className="flex items-center gap-2"><CheckCircle size={20} className="shrink-0 text-emerald-600" aria-hidden="true" />{operation === 'import' ? 'Students Imported!' : 'Student Added!'}</span>}
+      title={<span className="flex items-center gap-2"><CheckCircle size={20} className="shrink-0 text-emerald-600" aria-hidden="true" />{operation === 'reset' ? 'New temporary password' : operation === 'import' ? 'Students Imported!' : 'Student Added!'}</span>}
       onClose={close} size="lg" busy={isCopying} dismissible={false}
     >
-      <p className="mb-4 text-sm text-slate-600">
-        {operation === 'import' && typeof importedCount === 'number' && <>{importedCount} {importedCount === 1 ? 'student was' : 'students were'} imported. </>}
-        {credentials.length} new parent {credentials.length === 1 ? 'account was' : 'accounts were'} created. Copy these temporary credentials and share them with the parents before choosing Done.
-      </p>
+      {operation === 'reset' ? (
+        <p className="mb-4 text-sm text-slate-600">
+          Share this with them directly, not in a group. It is shown only once. Their old password, and any phone signed in with it, stopped working just now, and they will choose their own password when they next sign in.
+        </p>
+      ) : (
+        <p className="mb-4 text-sm text-slate-600">
+          {operation === 'import' && typeof importedCount === 'number' && <>{importedCount} {importedCount === 1 ? 'student was' : 'students were'} imported. </>}
+          {credentials.length} new parent {credentials.length === 1 ? 'account was' : 'accounts were'} created. Copy these temporary credentials and share them with the parents before choosing Done.
+        </p>
+      )}
       {copyError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{copyError}</p>}
       <div className="space-y-4">
         {credentials.map((cred: any, index: number) => (

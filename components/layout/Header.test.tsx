@@ -71,4 +71,33 @@ describe('Header', () => {
       await screen.findByText('Could not refresh notifications. Showing the last available updates.')
     ).toBeInTheDocument();
   });
+
+  it('opens the password requests from a "forgot password" notification', async () => {
+    // The old button waited for a notification type and user id the server never sent,
+    // so it never appeared and nobody could act on a request.
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+    const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/notifications')) {
+        return json([{
+          id: 'n-1', type: 'SYSTEM', title: 'Password reset requested',
+          message: 'Priya (priya@example.com) cannot sign in and asked for a password reset.',
+          isRead: false, createdAt: '2026-09-22T04:00:00Z',
+          context: { type: 'PASSWORD_RESET', requestId: 'req-1', userId: 'p-1' },
+        }]);
+      }
+      if (url.includes('/password-reset-requests')) {
+        return json([{ id: 'req-1', createdAt: '2026-09-22T04:00:00Z', user: { id: 'p-1', name: 'Priya', email: 'priya@example.com', role: 'PARENT' } }]);
+      }
+      return json({});
+    });
+
+    render(<Header />);
+    fireEvent.click(screen.getByRole('button', { name: /^Notifications/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Handle request' }));
+
+    expect(await screen.findByRole('button', { name: 'Create temporary password' })).toBeInTheDocument();
+    expect(screen.getByText('priya@example.com')).toBeInTheDocument();
+  });
 });

@@ -466,9 +466,33 @@ export const resolveAlert = async (id: string) => {
   return api(`/notifications/${id}/resolve`, { method: 'POST', body: {} });
 };
 
-export const updateParentPassword = async (parentId: string, password: string) => {
-  return api(`/parents/${parentId}`, { method: 'PUT', body: { password } });
-};
+// ─── Password help ─────────────────────────────────────────
+// A person who pressed "Forgot password" in their app. School admins only see parents
+// and drivers of their own school; administrators' requests go to super admins.
+export interface PasswordResetRequest {
+  id: string;
+  createdAt: string;
+  user: { id: string; name: string; email: string; role: string; phone?: string | null };
+}
+
+/** The server makes the password and returns it once; the person must replace it at next sign-in. */
+export interface IssuedPassword {
+  user: { id: string; name: string; email: string };
+  tempPassword: string;
+}
+
+export const fetchPasswordResetRequests = async (): Promise<PasswordResetRequest[]> =>
+  api<PasswordResetRequest[]>(`/password-reset-requests`);
+
+export const approvePasswordReset = async (requestId: string): Promise<IssuedPassword> =>
+  api<IssuedPassword>(`/password-reset-requests/${requestId}/approve`, { method: 'POST', body: {} });
+
+export const rejectPasswordReset = async (requestId: string) =>
+  api(`/password-reset-requests/${requestId}/reject`, { method: 'POST', body: {} });
+
+/** Reset a parent's password without waiting for them to ask (e.g. they phoned the office). */
+export const resetParentPassword = async (parentId: string): Promise<IssuedPassword> =>
+  api<IssuedPassword>(`/parents/${parentId}/reset-password`, { method: 'POST', body: {} });
 
 export const sendMessageToParent = async (parentId: string, subject: string, message: string) => {
   return api(`/parents/${parentId}/messages`, { method: 'POST', body: { subject, message } });

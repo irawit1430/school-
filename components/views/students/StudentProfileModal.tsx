@@ -6,9 +6,12 @@ import { StudentDialog } from './StudentDialog';
 interface StudentProfileModalProps {
   viewStudent: any;
   onClose: () => void;
+  /** Present when the student has a parent account the office can reset. */
+  onResetParentPassword?: () => void;
+  resettingParent?: boolean;
 }
 
-export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModalProps) {
+export function StudentProfileModal({ viewStudent, onClose, onResetParentPassword, resettingParent = false }: StudentProfileModalProps) {
   if (!viewStudent) return null;
   const statusStyle = STUDENT_STATUS_META[viewStudent.status as StudentStatus] || STUDENT_STATUS_META['Not scanned'];
   const details = [
@@ -24,7 +27,7 @@ export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModa
   ];
 
   return (
-    <StudentDialog title="Student Profile" onClose={onClose}>
+    <StudentDialog title="Student Profile" onClose={onClose} busy={resettingParent}>
       <div className="mb-6 flex items-center gap-4">
         {viewStudent.avatar && <img src={viewStudent.avatar} alt="" className="h-16 w-16 shrink-0 rounded-full bg-slate-200 object-cover" />}
         <div className="min-w-0">
@@ -40,6 +43,15 @@ export function StudentProfileModal({ viewStudent, onClose }: StudentProfileModa
           </div>
         ))}
       </dl>
+      {onResetParentPassword && (
+        <div className="mt-6 border-t border-slate-100 pt-4">
+          <p className="mb-2 text-xs text-slate-500">Parent locked out? The parent signs in with the email above.</p>
+          <button type="button" onClick={onResetParentPassword} disabled={resettingParent}
+            className="w-full rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50">
+            {resettingParent ? 'Creating…' : 'Reset parent password'}
+          </button>
+        </div>
+      )}
     </StudentDialog>
   );
 }

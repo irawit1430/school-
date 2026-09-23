@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
   fetchStudents: vi.fn(), fetchTodayAttendance: vi.fn(), fetchStats: vi.fn(), fetchRoutes: vi.fn(),
   fetchNotifications: vi.fn(), createStudent: vi.fn(), importStudentsCSV: vi.fn(),
   assignStudentToStop: vi.fn(), updateStudentMapping: vi.fn(), sendMessageToParent: vi.fn(), clearApiCache: vi.fn(),
+  resetParentPassword: vi.fn(), fetchPasswordResetRequests: vi.fn(), approvePasswordReset: vi.fn(), rejectPasswordReset: vi.fn(),
   apiErrorMessage: (error: Error, fallback: string) => error.message || fallback,
   ApiError: class ApiError extends Error {
     status: number; data?: Record<string, any>;
@@ -272,4 +273,61 @@ test('a reload that does return the mapping record makes the assignment changeab
   await render();
   await click(button('Reload to change', row('Asha')));
   expect(button('Change Route & Stop', row('Asha'))).toBeTruthy();
+});
+
+// ─── Helping a locked-out parent ───────────────────────────
+// The profile said "Parent Email: Not provided" for everyone (the API never sent it), and
+// the only reset button waited on a notification the server never produced.
+
+test("the profile shows the parent's sign-in email and resets their password once", async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(api.resetParentPassword).mockResolvedValue({ user: { id: 'parent-a', name: 'A', email: 'a@example.test' }, tempPassword: 'Tmp4Asha9xyz' });
+  await render(); await click(button('View Student Asha'));
+  expect(host.querySelector('dialog')!.textContent).toContain('a@example.test');
+
+  await click(button('Reset parent password'));
+
+  expect(api.resetParentPassword).toHaveBeenCalledWith('parent-a');
+  expect([...host.querySelectorAll('textarea')].map(t => t.value)).toEqual(['a@example.test', 'Tmp4Asha9xyz']);
+  expect(host.textContent).toContain('New temporary password');
+});
+
+test('nothing is reset if the admin cancels the confirmation', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await render(); await click(button('View Student Asha'));
+  await click(button('Reset parent password'));
+  expect(api.resetParentPassword).not.toHaveBeenCalled();
+});
+
+test("searching a parent's email finds their child", async () => {
+  await render();
+  await fill(host.querySelector<HTMLInputElement>('#student-search')!, 'b@example.test');
+  expect(host.querySelector('tbody')!.textContent).toContain('Bina');
+  expect(host.querySelector('tbody')!.textContent).not.toContain('Asha');
+});
+
+test('password requests: approving shows the new password once, declining clears the request', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.mocked(api.fetchPasswordResetRequests).mockResolvedValue([
+    { id: 'req-1', createdAt: '2026-09-22T04:00:00Z', user: { id: 'parent-a', name: 'Anil', email: 'a@example.test', role: 'PARENT', phone: '98' } },
+    { id: 'req-2', createdAt: '2026-09-22T05:00:00Z', user: { id: 'drv-1', name: 'Ravi', email: 'ravi@example.test', role: 'DRIVER' } },
+  ]);
+  vi.mocked(api.approvePasswordReset).mockResolvedValue({ user: { id: 'parent-a', name: 'Anil', email: 'a@example.test' }, tempPassword: 'Tmp7Anil2abc' });
+  vi.mocked(api.rejectPasswordReset).mockResolvedValue({});
+  await render();
+
+  await click(button('Password requests'));
+  const list = () => host.querySelector('ul[aria-label="Pending password requests"]')!;
+  expect(list().textContent).toContain('Anil');
+  expect(list().textContent).toContain('Ravi');
+
+  await click(button('Create temporary password', list().querySelector('li')!));
+  expect(api.approvePasswordReset).toHaveBeenCalledWith('req-1');
+  expect([...host.querySelectorAll('textarea')].map(t => t.value)).toEqual(['a@example.test', 'Tmp7Anil2abc']);
+
+  await click(button('Done'));
+  expect(list().textContent).not.toContain('Anil');
+  await click(button('Decline', list().querySelector('li')!));
+  expect(api.rejectPasswordReset).toHaveBeenCalledWith('req-2');
+  expect(host.textContent).toContain('No one is waiting for a new password.');
 });

@@ -2,10 +2,10 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search } from 'lucide-react';
+import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
-import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, sendMessageToParent, updateStudentMapping } from '@/lib/api';
+import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, resetParentPassword, sendMessageToParent, updateStudentMapping } from '@/lib/api';
 import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
 import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
 import { SummaryCards } from './students/SummaryCards';
@@ -15,6 +15,7 @@ import { CredentialsPopup } from './students/CredentialsPopup';
 import { AssignBusModal } from './students/AssignBusModal';
 import { StudentProfileModal } from './students/StudentProfileModal';
 import { MessageParentModal } from './students/MessageParentModal';
+import { PasswordRequestsModal } from './PasswordRequestsModal';
 import { useStudentsData } from './students/useStudentsData';
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -62,7 +63,9 @@ export function StudentsAttendance() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [credentials, setCredentials] = useState<{ data: unknown; operation: 'create' | 'import'; count?: number } | null>(null);
+  const [credentials, setCredentials] = useState<{ data: unknown; operation: 'create' | 'import' | 'reset'; count?: number } | null>(null);
+  const [showPasswordRequests, setShowPasswordRequests] = useState(false);
+  const [resettingParent, setResettingParent] = useState(false);
 
   const [assignStudent, setAssignStudent] = useState<ProcessedStudent | null>(null);
   const [assignFormData, setAssignFormData] = useState({ routeId: '', routeStopId: '', mappingId: '' });
@@ -111,7 +114,8 @@ export function StudentsAttendance() {
     return students.filter(student => (!status || student.status === status)
       && (!gradeFilter || student.grade === gradeFilter)
       && (!routeFilter || student.route === routeFilter)
-      && (!query || [student.name, student.tag, student.route, student.stopName].some(value => value.toLocaleLowerCase().includes(query))))
+      && (!query || [student.name, student.tag, student.route, student.stopName, student.parentName, student.parentEmail]
+        .some(value => (value || '').toLocaleLowerCase().includes(query))))
       .sort((a, b) => {
         const field = sortBy as 'name' | 'grade' | 'route';
         return String(a[field] || '').localeCompare(String(b[field] || ''), undefined, { numeric: true }) || a.name.localeCompare(b.name);
@@ -230,6 +234,20 @@ export function StudentsAttendance() {
     } catch (error) { setMessageError(apiErrorMessage(error, 'Could not send this message.')); }
     finally { writing.current = false; setIsMessageSubmitting(false); }
   };
+  // A parent phones the office, locked out. The server makes the temporary password and
+  // returns it once; the parent chooses their own at next sign-in.
+  const handleResetParentPassword = async (student: ProcessedStudent) => {
+    if (resettingParent || !student.parentId) return;
+    const who = student.parentName || 'this parent';
+    if (!window.confirm(`Create a new temporary password for ${who}${student.parentEmail ? ` (${student.parentEmail})` : ''}?\n\nTheir current password stops working straight away. Only do this once you are sure you are talking to them.`)) return;
+    setResettingParent(true);
+    try {
+      const result = await resetParentPassword(student.parentId);
+      setViewStudentId(null);
+      setCredentials({ data: { email: result.user.email, temporaryPassword: result.tempPassword }, operation: 'reset' });
+    } catch (error) { toast.error(apiErrorMessage(error, 'Could not reset the password.')); }
+    finally { setResettingParent(false); }
+  };
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (writing.current) return;
@@ -322,6 +340,7 @@ export function StudentsAttendance() {
           </button>
           <button className={secondaryButton} onClick={() => exportCSV('all')} disabled={!students.length}><Download size={16} />Export all</button>
           <button className={secondaryButton} onClick={() => { setImportError(null); setIsImportModalOpen(true); }}><Upload size={16} />Bulk Import</button>
+          <button className={secondaryButton} onClick={() => setShowPasswordRequests(true)}><KeyRound size={16} />Password requests</button>
           <button className={primaryButton} onClick={openCreate}><Plus size={16} />Add New Student</button>
         </div>
       </div>
@@ -351,9 +370,9 @@ export function StudentsAttendance() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="relative">
-                  <label htmlFor="student-search" className="sr-only">Search students by name, RFID, route or stop</label>
+                  <label htmlFor="student-search" className="sr-only">Search students by name, parent name or email, RFID, route or stop</label>
                   <Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400" />
-                  <input id="student-search" type="search" value={searchQuery} placeholder="Search students, RFID, route or stop…"
+                  <input id="student-search" type="search" value={searchQuery} placeholder="Search students, parents, email, RFID, route or stop…"
                     onChange={event => { setSearchQuery(event.target.value); setCurrentPage(1); }}
                     className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm" />
                 </div>
@@ -475,7 +494,10 @@ export function StudentsAttendance() {
         onImport={handleImportCSV} isSubmitting={isSubmitting} error={importError} />}
       <CredentialsPopup credentialsPopup={credentials?.data || null} setCredentialsPopup={() => setCredentials(null)}
         operation={credentials?.operation} importedCount={credentials?.count} />
-      <StudentProfileModal viewStudent={viewStudent} onClose={() => setViewStudentId(null)} />
+      <StudentProfileModal viewStudent={viewStudent} onClose={() => setViewStudentId(null)}
+        onResetParentPassword={viewStudent?.parentId ? () => void handleResetParentPassword(viewStudent) : undefined}
+        resettingParent={resettingParent} />
+      <PasswordRequestsModal open={showPasswordRequests} onClose={() => setShowPasswordRequests(false)} />
       <MessageParentModal messageStudent={messageStudent} onClose={closeMessage} onSubmit={handleMessageSubmit}
         messageForm={messageForm} setMessageForm={setMessageForm} isMessageSubmitting={isMessageSubmitting} error={messageError} />
     </div>

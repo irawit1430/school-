@@ -8,6 +8,10 @@ import {
   clearApiCache,
   clearSchoolIdCache,
   updatePassword,
+  resetParentPassword,
+  approvePasswordReset,
+  rejectPasswordReset,
+  fetchPasswordResetRequests,
 } from './api';
 import { CONFIG } from './config';
 
@@ -329,5 +333,36 @@ describe('updatePassword', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ oldPassword: 'current-pass', newPassword: 'new-pass-1234' });
     expect(localStorageMock.getItem('token')).toBe('new-token');
+  });
+});
+
+describe('password help', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    setUser({ id: 'admin-1', role: 'SCHOOL_ADMIN', schoolId: 'school-1' });
+    localStorageMock.setItem('token', 'tok');
+  });
+
+  it('calls the routes the backend serves', async () => {
+    const issued = { user: { id: 'p', name: 'P', email: 'p@x.com' }, tempPassword: 'T' };
+    (global.fetch as any)
+      .mockResolvedValueOnce(ok(issued))
+      .mockResolvedValueOnce(ok(issued))
+      .mockResolvedValueOnce(ok({}))
+      .mockResolvedValueOnce(ok([]));
+
+    expect(await resetParentPassword('parent-1')).toEqual(issued);
+    expect(await approvePasswordReset('req-1')).toEqual(issued);
+    await rejectPasswordReset('req-2');
+    await fetchPasswordResetRequests();
+
+    const calls = (global.fetch as any).mock.calls.map(([url, init]: [string, RequestInit]) => `${init.method} ${url.replace(API_BASE, '')}`);
+    expect(calls).toEqual([
+      'POST /parents/parent-1/reset-password',
+      'POST /password-reset-requests/req-1/approve',
+      'POST /password-reset-requests/req-2/reject',
+      'GET /password-reset-requests',
+    ]);
   });
 });
