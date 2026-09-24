@@ -385,6 +385,30 @@ export const fetchRoutes = async (opts: { summary?: boolean } = {}) => {
 };
 
 
+// ─── School ────────────────────────────────────────────────
+export type SchoolTransport = {
+  id: string;
+  name?: string;
+  latitude: number | null;
+  longitude: number | null;
+  /** Minutes a bus waits at each stop; null means the server default. */
+  stopDwellMinutes: number | null;
+};
+
+export const fetchSchool = async (): Promise<SchoolTransport> => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api(`/schools/${schoolId}`);
+};
+
+/** How long buses wait at each stop, for this school's ETAs. null = the default. */
+export const updateSchoolTransport = async (stopDwellMinutes: number | null) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<{ id: string; stopDwellMinutes: number | null; defaultStopDwellMinutes: number }>(
+    `/schools/${schoolId}/transport`, { method: 'PATCH', body: { stopDwellMinutes } });
+};
+
 // ─── Students ──────────────────────────────────────────────
 export const fetchStudents = async () => {
   const schoolId = await getSchoolId();

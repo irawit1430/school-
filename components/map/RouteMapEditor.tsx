@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from 'react';
 import GoogleRouteMap from './GoogleRouteMap';
-import { fetchOsrmRoute, reverseGeocode, searchLocation, Stop } from '@/lib/osrm';
+import { fetchOsrmRoute, reverseGeocode, searchLocation, routingPoints, splitSchoolLeg, Stop } from '@/lib/osrm';
 import { hasMapsKey, geocodeLatLng, geocodeAddress } from '@/lib/googleMaps';
 import { fetchGoogleTrafficRoute } from '@/lib/googleRoutes';
-import { createRoute, updateRoute, connectSocket, createStop, updateStop, deleteStop, reorderStops } from '@/lib/api';
+import { createRoute, updateRoute, connectSocket, createStop, updateStop, deleteStop, reorderStops, fetchSchool } from '@/lib/api';
 import { CONFIG } from '@/lib/config';
 import toast from 'react-hot-toast';
 import { Search, Loader2, Map as MapIcon, AlertTriangle, RefreshCw, X as XIcon } from 'lucide-react';
@@ -166,6 +166,18 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
   // Recompute existing routes when the editor opens so their stop times reflect
   // school-morning traffic (see nextSchoolMorning).
   const computedSigRef = useRef<string>('');
+  // The school ends every morning and starts every afternoon, so the road is asked to
+  // run on to it. Null until loaded, or when its location is not set.
+  const [school, setSchool] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchSchool()
+      .then((s) => {
+        if (!cancelled && s?.latitude != null && s?.longitude != null) setSchool({ lat: s.latitude, lng: s.longitude });
+      })
+      .catch(() => { /* no school location: the route is computed between the stops only */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Issue 5: Dirty-state snapshot — captures the initial form state so any
   // rename, move, or reorder is correctly detected as an unsaved change.
@@ -231,7 +243,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
   // persists if the effect is torn down before the fetch resolves.
   useEffect(() => {
     let cancelled = false;
-    const sig = stopSignature(stops);
+    const sig = stopSignature(stops) + (school ? `|school:${school.lat},${school.lng}` : '');
 
     if (stops.length < 2) {
       setOsrm(null);
@@ -243,16 +255,18 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
 
     setOsrmLoading(true);
     setOsrmError(false);
+    const points = routingPoints(stops, school);
     const calculateRoute = async () => {
       if (hasMapsKey) {
         try {
-          const googleRoute = await fetchGoogleTrafficRoute(stops);
-          if (googleRoute) return googleRoute;
+          const googleRoute = await fetchGoogleTrafficRoute(points);
+          if (googleRoute) return splitSchoolLeg(googleRoute, stops.length);
         } catch {
           // Keep the route editor usable if Routes API is disabled for this key.
         }
       }
-      return fetchOsrmRoute(stops);
+      const osrmRoute = await fetchOsrmRoute(points);
+      return osrmRoute && splitSchoolLeg(osrmRoute, stops.length);
     };
 
     calculateRoute().then(r => {
@@ -277,7 +291,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
       // Issue 16e: don't leave the spinner running after unmount/re-run
       setOsrmLoading(false);
     };
-  }, [stops]);
+  }, [stops, school]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -575,6 +589,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
                 </p>
                 <p className="text-lg font-bold text-slate-900">{osrm.durationMin} min</p>
                 {osrm.trafficAware && <p className="text-[10px] text-slate-500">Google traffic, school morning</p>}
+                {osrm.schoolMinutes != null && <p className="text-[10px] text-slate-500">incl. {osrm.schoolMinutes} min on to school</p>}
               </div>
             </div>
           )}

@@ -13,6 +13,7 @@ vi.mock('@/components/map/GoogleRouteMap', () => ({ default: () => null }));
 import * as api from '@/lib/api';
 import { syncRouteStops } from '@/components/map/RouteMapEditor';
 import { nextSchoolMorning } from '@/lib/googleRoutes';
+import { routingPoints, splitSchoolLeg } from '@/lib/osrm';
 
 const saved = [
   { id: 's1', name: 'Gate', lat: 1, lng: 1, address: null, orderIdx: 0, expectedArrivalMinutes: 0 },
@@ -55,5 +56,25 @@ describe('nextSchoolMorning', () => {
   it('skips Sunday', () => {
     // 15:00 IST on Saturday 12 September
     expect(nextSchoolMorning(new Date('2026-09-12T09:30:00Z')).toISOString()).toBe('2026-09-14T02:00:00.000Z');
+  });
+});
+
+describe('routing through the school', () => {
+  const stops = [{ lat: 12.97, lng: 77.6 }, { lat: 12.97, lng: 77.61 }];
+  const school = { lat: 12.97, lng: 77.63 };
+
+  it('asks for the road on to the school after the last stop', () => {
+    expect(routingPoints(stops, school)).toEqual([...stops, { ...school, name: 'School' }]);
+  });
+
+  it('does not add it when the route already ends there, or it is unknown', () => {
+    expect(routingPoints(stops, { lat: 12.97, lng: 77.6101 })).toBe(stops);
+    expect(routingPoints(stops, null)).toBe(stops);
+  });
+
+  it("keeps each stop's own minutes and reports the school leg apart", () => {
+    const routed = { geometry: 'x', latLngs: [], distanceKm: 3, durationMin: 14, legMinutes: [0, 6, 14] };
+
+    expect(splitSchoolLeg(routed, 2)).toMatchObject({ legMinutes: [0, 6], schoolMinutes: 8, durationMin: 14 });
   });
 });
