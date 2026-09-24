@@ -52,6 +52,9 @@ export function BusesList() {
   };
 
   useEffect(() => {
+    // The first load; loadData is also the retry and refresh action, so it owns the
+    // loading flag it sets.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
   }, []);
 

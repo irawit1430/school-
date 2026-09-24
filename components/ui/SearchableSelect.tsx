@@ -58,16 +58,12 @@ export function SearchableSelect({
 
   const selectedOption = options.find(opt => opt.value === value);
 
-  // Reset highlight when options change
-  useEffect(() => {
-    setHighlightedIdx(0);
-  }, [query, isOpen]);
-
   // Click outside → close
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setHighlightedIdx(0);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -78,12 +74,14 @@ export function SearchableSelect({
     if (disabled) return;
     setIsOpen(true);
     setQuery('');
+    setHighlightedIdx(0);
     setTimeout(() => searchRef.current?.focus(), 0);
   }, [disabled]);
 
   const close = useCallback(() => {
     setIsOpen(false);
     setQuery('');
+    setHighlightedIdx(0);
     triggerRef.current?.focus();
   }, []);
 
@@ -219,7 +217,7 @@ export function SearchableSelect({
               className="w-full outline-none text-sm p-1"
               placeholder="Search…"
               value={query}
-              onChange={e => setQuery(e.target.value)}
+              onChange={e => { setQuery(e.target.value); setHighlightedIdx(0); }}
               onKeyDown={handleDropdownKeyDown}
               aria-label="Search options"
             />

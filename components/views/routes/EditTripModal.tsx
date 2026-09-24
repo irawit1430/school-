@@ -76,17 +76,18 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, routes = 
     || direction !== (trip?.direction ?? '')
     || scheduledStart !== (trip?.scheduledStart ? toLocalDatetimeLocal(trip.scheduledStart) : '');
 
-  useEffect(() => {
-    if (trip) {
-      setBusId(trip.busId || '');
-      setDriverId(trip.driverId || '');
-      setDirection(trip.direction ?? '');
-      setDirectionError('');
-      setScheduledStart(
-        trip.scheduledStart ? toLocalDatetimeLocal(trip.scheduledStart) : ''
-      );
-    }
-  }, [trip]);
+  // Load the form from the trip whenever a different trip is opened. Done during render,
+  // as React recommends for state that follows a prop, so the first paint already shows
+  // this trip rather than the last one.
+  const [loadedTrip, setLoadedTrip] = useState<typeof trip | null>(null);
+  if (trip && trip !== loadedTrip) {
+    setLoadedTrip(trip);
+    setBusId(trip.busId || '');
+    setDriverId(trip.driverId || '');
+    setDirection(trip.direction ?? '');
+    setDirectionError('');
+    setScheduledStart(trip.scheduledStart ? toLocalDatetimeLocal(trip.scheduledStart) : '');
+  }
 
   if (!isOpen) return null;
 

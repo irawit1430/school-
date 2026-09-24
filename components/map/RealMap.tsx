@@ -138,6 +138,11 @@ function MapController({
   return null;
 }
 
+
+// Bus marker icons, one per bus and state. Module-level: an icon depends only on its key,
+// and a cache held in a ref was being read and written during render.
+const iconCache = new Map<string, L.DivIcon>();
+
 export default function RealMap({ 
   buses, 
   zoom = CONFIG.MAP_DEFAULT_ZOOM, 
@@ -157,8 +162,6 @@ export default function RealMap({
     ? buses.filter(b => b.id === selectedBusId)
     : buses;
 
-  const iconCache = React.useRef<Record<string, L.DivIcon>>({});
-
   const getCustomIcon = (bus: any, isSelected: boolean) => {
     const speed = bus.gpsLogs?.[0]?.speed || 0;
     // Carried on the bus row by mergeBusPosition, which is where the previous value
@@ -168,9 +171,8 @@ export default function RealMap({
 
     const cacheKey = `${bus.id}-${isSelected}-${isAlert}-${isDelayed}`;
     
-    if (iconCache.current[cacheKey]) {
-      return iconCache.current[cacheKey];
-    }
+    const cached = iconCache.get(cacheKey);
+    if (cached) return cached;
 
     const bgColorClass = isAlert ? 'bg-red-500' : isDelayed ? 'bg-amber-500' : 'bg-emerald-500';
     const labelBgClass = isAlert ? 'bg-red-900' : isDelayed ? 'bg-amber-900' : 'bg-slate-900';
@@ -210,7 +212,8 @@ export default function RealMap({
       popupAnchor: [0, -35],
     });
 
-    iconCache.current[cacheKey] = icon;
+    if (iconCache.size > 2000) iconCache.clear();
+    iconCache.set(cacheKey, icon);
     return icon;
   };
 

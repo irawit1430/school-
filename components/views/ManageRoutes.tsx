@@ -236,6 +236,8 @@ export function ManageRoutes() {
       });
   }, []);
 
+  // The first load; loadRoutes is also the refresh action, so it owns its loading flag.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadRoutes(); }, []);
 
   // ─── Maps for O(1) lookup ────────────────────────────────────────────────
@@ -318,15 +320,12 @@ export function ManageRoutes() {
 
   const totalPages = Math.max(1, Math.ceil(filteredRoutes.length / itemsPerPage));
 
-  // Issue 11: clamp page when list shrinks (delete or filter)
-  useEffect(() => {
-    setCurrentPage(p => Math.min(p, Math.max(1, Math.ceil(filteredRoutes.length / itemsPerPage))));
-  }, [filteredRoutes.length]);
+  // Issue 11: a page past the end (after a delete or a filter) shows the last page.
+  // Worked out here rather than written back from an effect, which rendered the empty
+  // page first.
+  const page = Math.min(currentPage, totalPages);
 
-  // Reset page on tab change
-  useEffect(() => { setCurrentPage(1); }, [activeTab]);
-
-  const startIndex = (currentPage - 1) * itemsPerPage;
+  const startIndex = (page - 1) * itemsPerPage;
   const displayRoutes = filteredRoutes.slice(startIndex, startIndex + itemsPerPage);
 
   // ─── Handlers ────────────────────────────────────────────────────────────
@@ -475,7 +474,9 @@ export function ManageRoutes() {
   };
 
   // ─── Sort header helper ──────────────────────────────────────────────────
-  const SortHeader = ({ col, label }: { col: SortKey; label: string }) => (
+  // A plain function, not a component: declared inside this one, a component is a new
+  // type on every render, so React threw each header away and rebuilt it.
+  const sortHeader = (col: SortKey, label: string) => (
     <button
       onClick={() => {
         if (sortKey === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -537,7 +538,7 @@ export function ManageRoutes() {
               {['All Routes', 'Running', 'Idle'].map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
                   className={clsx(
                     'px-3 py-1.5 text-xs font-bold rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500',
                     activeTab === tab ? 'text-orange-700 bg-orange-50' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50',
@@ -671,16 +672,16 @@ export function ManageRoutes() {
             <thead className="bg-slate-50 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
               <tr>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="name" label="Route" />
+                  {sortHeader('name', 'Route')}
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="stops" label="Stops" />
+                  {sortHeader('stops', 'Stops')}
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="duration" label="Est. Time" />
+                  {sortHeader('duration', 'Est. Time')}
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100">
-                  <SortHeader col="departure" label="Trips" />
+                  {sortHeader('departure', 'Trips')}
                 </th>
                 <th className="px-4 py-3 border-b border-slate-100 text-right">Actions</th>
               </tr>
@@ -847,14 +848,14 @@ export function ManageRoutes() {
           </span>
           <div className="flex gap-1">
             <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(Math.max(1, page - 1))}
+              disabled={page === 1}
               className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500"
               aria-label="Previous page"
             >&lt;</button>
             {Array.from({ length: totalPages }).map((_, i) => {
               const pageNum = i + 1;
-              if (totalPages > 5 && Math.abs(currentPage - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
+              if (totalPages > 5 && Math.abs(page - pageNum) > 1 && pageNum !== 1 && pageNum !== totalPages) {
                 if (pageNum === 2 || pageNum === totalPages - 1) return <span key={pageNum} className="px-1 flex items-center justify-center">…</span>;
                 return null;
               }
@@ -863,10 +864,10 @@ export function ManageRoutes() {
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
                   aria-label={`Page ${pageNum}`}
-                  aria-current={currentPage === pageNum ? 'page' : undefined}
+                  aria-current={page === pageNum ? 'page' : undefined}
                   className={clsx(
                     'w-7 h-7 flex items-center justify-center rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500',
-                    currentPage === pageNum ? 'bg-orange-600 text-white font-bold' : 'hover:bg-slate-50 border border-transparent hover:border-slate-200',
+                    page === pageNum ? 'bg-orange-600 text-white font-bold' : 'hover:bg-slate-50 border border-transparent hover:border-slate-200',
                   )}
                 >
                   {pageNum}
@@ -874,8 +875,8 @@ export function ManageRoutes() {
               );
             })}
             <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
               className="w-7 h-7 flex items-center justify-center rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-500"
               aria-label="Next page"
             >&gt;</button>

@@ -156,7 +156,9 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
   const [isSearching, setIsSearching] = useState(false);
 
   // Live Bus Tracking state
-  const [liveBusPosition, setLiveBusPosition] = useState<[number, number] | null>(null);
+  // Tagged with its bus, so a position is never shown against another bus or none.
+  const [livePosition, setLivePosition] = useState<{ busId: string; at: [number, number] } | null>(null);
+  const liveBusPosition = livePosition && livePosition.busId === liveBusId ? livePosition.at : null;
   const hasCenteredOnBusRef = useRef(false);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -207,7 +209,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
       hasCenteredOnBusRef.current = false;
       socket.on('location_update', (data: any) => {
         if (data.busId === liveBusId) {
-          setLiveBusPosition([data.lat, data.lng]);
+          setLivePosition({ busId: liveBusId, at: [data.lat, data.lng] });
           if (!hasCenteredOnBusRef.current) {
             setLastAddedPos([data.lat, data.lng]);
             hasCenteredOnBusRef.current = true;
@@ -215,8 +217,6 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
         }
       });
       return () => { socket.disconnect(); };
-    } else {
-      setLiveBusPosition(null);
     }
   }, [liveBusId]);
 
@@ -246,6 +246,9 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
     const sig = stopSignature(stops) + (school ? `|school:${school.lat},${school.lng}` : '');
 
     if (stops.length < 2) {
+      // This effect owns the router call and its result; clearing that result when
+      // there is nothing to route belongs with it.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOsrm(null);
       setOsrmError(false);
       computedSigRef.current = sig;

@@ -23,18 +23,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [status, setStatus] = useState<'checking' | 'authed' | 'redirecting'>('checking');
 
   useEffect(() => {
-    if (getToken()) {
-      setStatus('authed');
-    } else {
-      setStatus('redirecting');
-      router.replace('/login');
-    }
+    // The token is in this browser's storage, which the prerendered page cannot read:
+    // it has to be checked after mount, so this state is set from an effect on purpose.
+    const authed = Boolean(getToken());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setStatus(authed ? 'authed' : 'redirecting');
+    if (!authed) router.replace('/login');
   }, [router]);
 
-  // Close the mobile drawer whenever the route changes
-  useEffect(() => {
+  // Close the mobile drawer whenever the route changes: noticed during render, the
+  // way React recommends for state that follows a value, instead of an effect that
+  // painted the open drawer on the new page first.
+  const [drawerPath, setDrawerPath] = useState(pathname);
+  if (drawerPath !== pathname) {
+    setDrawerPath(pathname);
     setSidebarOpen(false);
-  }, [pathname]);
+  }
 
   // On the way to the login page: render nothing, so no dashboard is implied.
   if (status === 'redirecting') return null;

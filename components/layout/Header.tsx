@@ -187,6 +187,8 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
     if (!notif || isEmergencyNotification(notif)) return;
     // Optimistic update + cooldown
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    // An event handler, not render: the clock is read when the admin clicks.
+    // eslint-disable-next-line react-hooks/purity
     skipPollUntil.current = Date.now() + 15000;
     try {
       await markNotificationRead(id);

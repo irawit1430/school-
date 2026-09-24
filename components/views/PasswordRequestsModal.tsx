@@ -47,6 +47,8 @@ export function PasswordRequestsModal({ open, onClose }: { open: boolean; onClos
 
   useEffect(() => {
     if (!open) return;
+    // Opening the modal is what fetches the list: clear the last one, then load.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRequests(null);
     setIssued(null);
     void load();
