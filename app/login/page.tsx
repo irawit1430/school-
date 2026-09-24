@@ -17,6 +17,22 @@ import toast from 'react-hot-toast';
 import { Logo } from '@/components/ui/Logo';
 import { ApiError, getUser, login, setUser, updatePassword } from '@/lib/api';
 
+/** Where to land after signing in, and why we are here at all. */
+const returnTo = () => {
+  if (typeof window === 'undefined') return '/';
+  const next = new URLSearchParams(window.location.search).get('next');
+  // Only same-site paths: a `next` of "https://elsewhere" would make this an open redirect.
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+};
+
+const signedOutReason = () => {
+  if (typeof window === 'undefined') return '';
+  const reason = new URLSearchParams(window.location.search).get('reason');
+  if (reason === 'expired') return 'Your session expired. Sign in to pick up where you left off.';
+  if (reason === 'invalid') return 'You were signed out. Sign in again to continue.';
+  return '';
+};
+
 /** Admins sign in from the same office desktop every morning; only the email is
  *  remembered, never the password. */
 const REMEMBERED_EMAIL_KEY = 'voltava.login.email';
@@ -47,6 +63,7 @@ export default function LoginPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [issues, setIssues] = useState<Array<{ path: string; message: string }>>([]);
   const [showForgotHint, setShowForgotHint] = useState(false);
+  const [signedOut] = useState(signedOutReason);
   const router = useRouter();
 
   const [isResetMode, setIsResetMode] = useState(false);
@@ -89,7 +106,7 @@ export default function LoginPage() {
       if (user.mustResetPassword === true) {
         setIsResetMode(true);
       } else {
-        router.push('/');
+        router.push(returnTo());
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -129,7 +146,7 @@ export default function LoginPage() {
       }
 
       toast.success('Password updated');
-      router.push('/');
+      router.push(returnTo());
     } catch (error) {
       console.error('Password update error:', error);
       setApiError(error instanceof Error ? error.message : 'Failed to update password');
@@ -161,6 +178,17 @@ export default function LoginPage() {
     `block w-full rounded-lg border bg-app-bg/60 py-2.5 pl-10 pr-11 text-sm text-text-strong placeholder:text-text-muted/70 transition-colors ${
       hasIssue ? 'border-danger' : 'border-surface-border focus:border-primary'
     }`;
+
+  // Why they are on this screen, when they did not choose to be. Shown instead of nothing
+  // above the form, so an expiry does not look like the app having thrown them out at random.
+  const reasonBanner = !apiError && signedOut && (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-sm text-text-strong"
+    >
+      {signedOut}
+    </div>
+  );
 
   const errorBanner = apiError && (
     <div
@@ -239,6 +267,7 @@ export default function LoginPage() {
               </p>
 
               <form className="mt-8 space-y-5" onSubmit={handleLogin} noValidate>
+                {reasonBanner}
                 {errorBanner}
 
                 <div>
@@ -381,6 +410,7 @@ export default function LoginPage() {
               </p>
 
               <form className="mt-8 space-y-5" onSubmit={handleResetPassword} noValidate>
+                {reasonBanner}
                 {errorBanner}
 
                 <div>

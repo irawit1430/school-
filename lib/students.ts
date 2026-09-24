@@ -126,6 +126,24 @@ export function formatSchoolTime(value: string | number | Date | null | undefine
   return date ? timeFormatter.format(date) : '—';
 }
 
+/**
+ * A date in the school's timezone.
+ *
+ * Every screen that renders a date has to go through here. Bare `toLocaleDateString()`
+ * follows the browser, so near midnight — or on an administrator's laptop set to another
+ * zone — the attendance date and the leave date named different days. Attendance is the
+ * record of which children were on which bus, and a leave is what makes an absence
+ * legitimate, so those two disagreeing is not cosmetic.
+ */
+const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: SCHOOL_TIME_ZONE, day: '2-digit', month: 'short', year: 'numeric',
+});
+
+export function formatSchoolDate(value: string | number | Date | null | undefined): string {
+  const date = parseDate(value);
+  return date ? dateFormatter.format(date) : '—';
+}
+
 function boardingType(value: string | null | undefined): 'BOARDED' | 'ALIGHTED' | 'NO_SHOW' | null {
   const type = value?.toUpperCase();
   return type === 'BOARDED' || type === 'ALIGHTED' || type === 'NO_SHOW' ? type : null;

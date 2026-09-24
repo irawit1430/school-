@@ -9,7 +9,7 @@ import {
   rejectPasswordReset,
   type PasswordResetRequest,
 } from '@/lib/api';
-import { StudentDialog } from './students/StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 import { CredentialsPopup } from './students/CredentialsPopup';
 
 const ROLE_LABEL: Record<string, string> = { PARENT: 'Parent', DRIVER: 'Driver' };
@@ -90,7 +90,7 @@ export function PasswordRequestsModal({ open, onClose }: { open: boolean; onClos
   };
 
   return (
-    <StudentDialog
+    <Dialog
       title={<span className="flex items-center gap-2"><KeyRound size={20} className="shrink-0 text-orange-600" aria-hidden="true" />Password requests</span>}
       onClose={onClose}
       size="lg"
@@ -133,6 +133,6 @@ export function PasswordRequestsModal({ open, onClose }: { open: boolean; onClos
           ))}
         </ul>
       )}
-    </StudentDialog>
+    </Dialog>
   );
 }

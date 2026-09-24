@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { updateTrip } from '@/lib/api';
-import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
-import { useClickOutside } from '@/hooks/useClickOutside';
+import { Dialog } from '@/components/ui/Dialog';
 import { getBusDisplayName } from '@/lib/buses';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
 import type { Direction } from '@/lib/runs';
@@ -66,8 +65,12 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess
     }
   })();
 
-  const modalRef = useRef<HTMLDivElement>(null);
-  useClickOutside(modalRef, onClose);
+  // Was useClickOutside(modalRef, onClose): any click outside discarded the edit, with no
+  // confirmation and nothing changed on the server.
+  const dirty = busId !== (trip?.busId || '')
+    || driverId !== (trip?.driverId || '')
+    || direction !== (trip?.direction ?? '')
+    || scheduledStart !== (trip?.scheduledStart ? toLocalDatetimeLocal(trip.scheduledStart) : '');
 
   useEffect(() => {
     if (trip) {
@@ -146,19 +149,14 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-lg">Edit Trip</h3>
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="text-slate-400 hover:text-slate-600 transition-colors p-1 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+    <Dialog
+      title="Edit Trip"
+      onClose={onClose}
+      busy={isSubmitting}
+      dirty={dirty}
+      discardPrompt="Discard your changes to this trip?"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1">Bus</label>
             <SearchableSelect
@@ -221,8 +219,7 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess
               {isSubmitting ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Dialog>
   );
 }

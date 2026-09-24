@@ -5,7 +5,7 @@ import { AddStudentModal } from '../components/views/students/AddStudentModal';
 import { MessageParentModal } from '../components/views/students/MessageParentModal';
 import { CredentialsPopup } from '../components/views/students/CredentialsPopup';
 import { AssignBusModal } from '../components/views/students/AssignBusModal';
-import { StudentDialog } from '../components/views/students/StudentDialog';
+import { Dialog } from '../components/ui/Dialog';
 import { StudentProfileModal } from '../components/views/students/StudentProfileModal';
 import { ImportStudentsModal } from '../components/views/students/ImportStudentsModal';
 import { toast } from 'react-hot-toast';
@@ -96,7 +96,7 @@ test('native dialog has a named title, restores focus, and blocks all dismissal 
   document.body.append(trigger);
   trigger.focus();
   const onClose = vi.fn();
-  const ui = (busy: boolean) => <StudentDialog title="Test dialog" onClose={onClose} busy={busy}><input aria-label="Test value" /></StudentDialog>;
+  const ui = (busy: boolean) => <Dialog title="Test dialog" onClose={onClose} busy={busy}><input aria-label="Test value" /></Dialog>;
   await render(ui(true));
   const dialog = host.querySelector('dialog')!;
   expect(dialog.open).toBe(true);
@@ -263,4 +263,45 @@ test('a broken routes list never stops a student being registered', async () => 
   // The stop is optional, so a routes outage must not hold up the registration itself.
   await submit();
   expect(onSubmit).toHaveBeenCalledOnce();
+});
+
+// The lost-input defect: two modals discarded a part-written message on any click outside
+// them, with no confirmation. The guard lives in the dialog so every modal inherits it.
+test('a dirty dialog confirms before Escape or a backdrop click can discard it', async () => {
+  const onClose = vi.fn();
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  await render(
+    <Dialog title="Send broadcast" onClose={onClose} dirty discardPrompt="Discard this broadcast?">
+      <textarea aria-label="Message" />
+    </Dialog>,
+  );
+  const dialog = host.querySelector('dialog')!;
+  vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue({ left: 20, top: 20, right: 420, bottom: 420 } as DOMRect);
+
+  // Escape, declined.
+  await act(async () => { dialog.dispatchEvent(new Event('cancel', { cancelable: true })); });
+  expect(confirm).toHaveBeenCalledWith('Discard this broadcast?');
+  expect(onClose).not.toHaveBeenCalled();
+
+  // Backdrop click, declined.
+  await act(async () => {
+    dialog.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 5, clientY: 5 }));
+    dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 5, clientY: 5 }));
+  });
+  expect(onClose).not.toHaveBeenCalled();
+
+  // Accepted, so the work is genuinely being thrown away on purpose.
+  confirm.mockReturnValue(true);
+  await act(async () => { dialog.dispatchEvent(new Event('cancel', { cancelable: true })); });
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+test('a clean dialog closes without asking', async () => {
+  const onClose = vi.fn();
+  const confirm = vi.spyOn(window, 'confirm');
+  await render(<Dialog title="Nothing typed" onClose={onClose}><input aria-label="Empty" /></Dialog>);
+  const dialog = host.querySelector('dialog')!;
+  await act(async () => { dialog.dispatchEvent(new Event('cancel', { cancelable: true })); });
+  expect(confirm).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledTimes(1);
 });

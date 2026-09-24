@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
-import { X, AlertTriangle } from 'lucide-react';
-import { useClickOutside } from '@/hooks/useClickOutside';
+import React, { useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { Dialog } from '@/components/ui/Dialog';
 import { sendBroadcast, apiErrorMessage } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -35,7 +35,6 @@ const TYPE_COPY: Record<BroadcastType, string> = {
 };
 
 export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }: BroadcastModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [audience, setAudience] = useState<Audience>(defaultAudience);
@@ -46,17 +45,13 @@ export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }:
 
   const dirty = Boolean(title.trim() || message.trim());
 
+  // The dirty guard lives in the dialog now, so Escape and backdrop clicks both go through
+  // it rather than only the one path this modal happened to wire up.
   const close = () => {
-    // A part-written message explaining that buses are delayed by flooding is usually
-    // composed under time pressure. Losing it to a stray click outside the dialog meant
-    // typing it twice before anyone noticed the pattern.
-    if (dirty && !window.confirm('Discard this broadcast?')) return;
     setTitle(''); setMessage(''); setAudience(defaultAudience);
     setType('SYSTEM'); setError(''); setConfirming(false);
     onClose();
   };
-
-  useClickOutside(modalRef, () => { if (!isSubmitting) close(); });
 
   if (!isOpen) return null;
 
@@ -89,25 +84,16 @@ export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }:
   const field = 'w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all text-sm disabled:bg-slate-50';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Send broadcast"
-        className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900 text-lg">
-            {confirming ? 'Confirm this broadcast' : 'Send Broadcast'}
-          </h3>
-          <button
-            onClick={close}
-            disabled={isSubmitting}
-            aria-label="Close"
-            className="text-slate-400 hover:text-slate-600 transition-colors p-1 disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
+    <Dialog
+      title={confirming ? 'Confirm this broadcast' : 'Send Broadcast'}
+      onClose={close}
+      busy={isSubmitting}
+      dirty={dirty}
+      discardPrompt="Discard this broadcast?"
+    >
+      <>
         {confirming ? (
-          <div className="p-6 space-y-4 overflow-y-auto">
+          <div className="space-y-4">
             {/* This is the step that was missing entirely: one click used to notify the
                 whole school, with no recall and no sent history. */}
             <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -145,7 +131,7 @@ export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }:
             </div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <fieldset disabled={isSubmitting} className="space-y-4">
               <div>
                 <label htmlFor="broadcast-title" className="block text-sm font-semibold text-slate-700 mb-1">Title (Optional)</label>
@@ -217,7 +203,7 @@ export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }:
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </>
+    </Dialog>
   );
 }

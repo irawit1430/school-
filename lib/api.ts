@@ -23,6 +23,38 @@ export const setToken = (t: string) => {
   }
 };
 
+/**
+ * When this token expires, in epoch ms, or null if it says nothing useful.
+ *
+ * Read from the JWT's own `exp` claim, which is already in the browser — no endpoint and
+ * no refresh token needed to warn someone before their work is thrown away. The signature
+ * is not verified here and must not be: this is for telling a user "you have four minutes",
+ * never for deciding what they may do. The server remains the only authority on that.
+ */
+export const tokenExpiresAt = (token: string | null = getToken()): number | null => {
+  const payload = token?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof json?.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Send someone to the login screen without losing where they were.
+ *
+ * A bare redirect to /login was replacing the page — twenty stops placed on a map, a CSV
+ * preview, a part-written broadcast — with no explanation and no way back.
+ */
+export const redirectToLogin = (reason: 'expired' | 'invalid' = 'expired') => {
+  if (typeof window === 'undefined') return;
+  const here = window.location.pathname + window.location.search;
+  const next = here.startsWith('/login') ? '/overview' : here;
+  window.location.href = `/login?reason=${reason}&next=${encodeURIComponent(next)}`;
+};
+
 export const getUser = (): any => {
   if (typeof window === 'undefined') return null;
   const u = localStorage.getItem(CONFIG.USER_STORAGE_KEY);
@@ -114,9 +146,7 @@ async function request<T = any>(
   // ── Global auth handling: 401 → clear & redirect ──
   if (res.status === 401) {
     clearAuth();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
+    redirectToLogin('expired');
     throw new ApiError('Session expired', 401);
   }
 
@@ -281,9 +311,7 @@ export function connectSocket(): Socket {
   socket.on('connect_error', (err) => {
     if (err.message?.startsWith('Unauthorized') || err.message?.includes('invalid token')) {
       clearAuth();
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+      redirectToLogin('invalid');
     }
   });
 
@@ -394,6 +422,16 @@ export const assignStudentToStop = (data: { studentId: string; routeStopId: stri
  */
 export const updateStudentMapping = (mappingId: string, data: { routeStopId: string; direction?: Direction | null }) =>
   api(`/student-route-mappings/${mappingId}`, { method: 'PUT', body: data });
+
+/**
+ * Take a child off a stop entirely.
+ *
+ * A child who stops using the bus stayed on a driver's roster indefinitely and counted as
+ * not-scanned every day — which is the figure the tracking side reports as attendance, so
+ * the roster quietly drifted away from reality one leaver at a time.
+ */
+export const unassignStudentStop = (mappingId: string) =>
+  api(`/student-route-mappings/${mappingId}`, { method: 'DELETE' });
 
 // ─── Trips ─────────────────────────────────────────────────
 /**

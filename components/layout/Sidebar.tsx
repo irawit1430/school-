@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
 import { Logo } from '../ui/Logo';
-import toast from 'react-hot-toast';
 import { clearAuth } from '@/lib/api';
 import { BroadcastModal } from '../views/BroadcastModal';
 
@@ -27,10 +26,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   const handleEmergencyBroadcast = () => {
     setShowBroadcast(true);
-  };
-
-  const handleComingSoon = (feature: string) => {
-    toast(`${feature} is coming soon.`, { icon: '🚧' });
   };
 
   const menuItems = [
@@ -113,15 +108,20 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </button>
 
         <div className="space-y-1">
-          <button
-            onClick={() => handleComingSoon('Settings')}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors"
+          {/* Both of these were "coming soon" toasts. They sat in the two positions users
+              reach for when stuck, which taught them the navigation could not be trusted —
+              and Support in particular is where someone goes when something has already
+              gone wrong, the worst possible moment to have nothing. */}
+          <Link
+            href="/settings"
+            className={clsx(
+              'w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors',
+              pathname.startsWith('/settings') ? 'bg-primary text-white' : 'text-slate-300 hover:bg-slate-800',
+            )}
           >
-            <Settings size={18} className="text-slate-400" />
+            <Settings size={18} className={pathname.startsWith('/settings') ? 'text-white' : 'text-slate-400'} />
             Settings
-          </button>
-          {/* Was a "coming soon" toast. Support is where someone goes when something has
-              already gone wrong, which is the worst possible moment to have nothing. */}
+          </Link>
           <a
             href="mailto:support@voltava.in?subject=Voltava%20dashboard%20support"
             className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 rounded-md transition-colors"

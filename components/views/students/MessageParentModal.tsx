@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface MessageParentModalProps {
   messageStudent: any;
@@ -34,7 +34,7 @@ export function MessageParentModal({ messageStudent, onClose, onSubmit, messageF
   };
 
   return (
-    <StudentDialog title="Message Parent" onClose={onClose} busy={isMessageSubmitting}>
+    <Dialog title="Message Parent" onClose={onClose} busy={isMessageSubmitting}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
           <p>Regarding <strong className="text-slate-900">{messageStudent.name}</strong>{messageStudent.grade ? ' · Grade ' + messageStudent.grade : ''}</p>
@@ -72,6 +72,6 @@ export function MessageParentModal({ messageStudent, onClose, onSubmit, messageF
           </button>
         </div>
       </form>
-    </StudentDialog>
+    </Dialog>
   );
 }

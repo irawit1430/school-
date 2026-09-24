@@ -18,6 +18,8 @@ const RealMap = dynamic(() => import('./RealMap'), {
 
 interface DynamicMapProps {
   buses: any[];
+  routePath?: [number, number][] | null;
+  routeStops?: { id?: string; name?: string; lat?: number; lng?: number }[] | null;
   zoom?: number;
   center?: [number, number];
   height?: string;

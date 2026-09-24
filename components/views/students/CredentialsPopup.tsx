@@ -1,7 +1,7 @@
 import React, { useId, useState } from 'react';
 import { CheckCircle, Copy } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface CredentialsPopupProps {
   credentialsPopup: any;
@@ -35,7 +35,7 @@ export function CredentialsPopup({ credentialsPopup, setCredentialsPopup, operat
   const close = () => { if (!isCopying) { setCopyError(''); setCredentialsPopup(null); } };
 
   return (
-    <StudentDialog
+    <Dialog
       title={<span className="flex items-center gap-2"><CheckCircle size={20} className="shrink-0 text-emerald-600" aria-hidden="true" />{operation === 'reset' ? 'New temporary password' : operation === 'import' ? 'Students Imported!' : 'Student Added!'}</span>}
       onClose={close} size="lg" busy={isCopying} dismissible={false}
     >
@@ -72,6 +72,6 @@ export function CredentialsPopup({ credentialsPopup, setCredentialsPopup, operat
         </button>
         <button type="button" onClick={close} disabled={isCopying} className="flex-1 rounded-lg bg-orange-600 px-4 py-2.5 font-semibold text-white hover:bg-orange-700 disabled:opacity-50">Done</button>
       </div>
-    </StudentDialog>
+    </Dialog>
   );
 }

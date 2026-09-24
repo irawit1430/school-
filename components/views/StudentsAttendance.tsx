@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
-import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, resetParentPassword, sendMessageToParent, updateStudentMapping } from '@/lib/api';
+import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop } from '@/lib/api';
 import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
 import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
 import { SummaryCards } from './students/SummaryCards';
@@ -74,6 +74,7 @@ export function StudentsAttendance() {
   const [routesError, setRoutesError] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
   const [isAssignSubmitting, setIsAssignSubmitting] = useState(false);
+  const [isUnassigning, setIsUnassigning] = useState(false);
   // A successful create must stay blocked even if the following roster refresh fails.
   const [createdAssignmentIds, setCreatedAssignmentIds] = useState<Set<string>>(() => new Set());
   // Rows already reloaded once without the roster producing an assignment record. The
@@ -213,6 +214,31 @@ export function StudentsAttendance() {
       if (error instanceof ApiError && error.status === 404) void data.refresh(true, true);
     } finally { writing.current = false; setIsAssignSubmitting(false); }
   };
+  /**
+   * Takes the child off this stop. Confirmed by name, because it is the one action in this
+   * dialog that cannot be undone by moving them somewhere else.
+   */
+  const handleUnassign = async () => {
+    const mappingId = assignFormData.mappingId;
+    if (!assignStudent || !mappingId || writing.current) return;
+    const mapping = assignStudent.mappings.find(entry => entry.id === mappingId);
+    const where = mapping ? mapping.routeName + ' · ' + mapping.stopName : 'this stop';
+    const warning = `Remove ${assignStudent.name} from ${where}?\n\n`
+      + 'They will have no pickup stop until one is assigned again, and will stop appearing '
+      + "on the driver's roster.";
+    if (!window.confirm(warning)) return;
+    writing.current = true; setIsUnassigning(true); setAssignError(null);
+    try {
+      await unassignStudentStop(mappingId);
+      toast.success(assignStudent.name + ' removed from ' + where + '.');
+      setAssignStudent(null);
+      void data.refresh(true, true);
+    } catch (error) {
+      setAssignError(mappingErrorMessage(error));
+      if (error instanceof ApiError && error.status === 404) void data.refresh(true, true);
+    } finally { writing.current = false; setIsUnassigning(false); }
+  };
+
   const openMessage = (student: ProcessedStudent) => {
     if (writing.current || !student.parentId) return;
     setMessageForm({ subject: '', body: '' }); setMessageError(null); setMessageStudent(student);
@@ -485,6 +511,7 @@ export function StudentsAttendance() {
       {assignStudent && <AssignBusModal onClose={closeAssign} onSubmit={handleAssignSubmit} assignStudent={assignStudent}
         assignFormData={assignFormData} setAssignFormData={setAssignFormData} isAssignSubmitting={isAssignSubmitting}
         mappings={assignStudent.mappings}
+        onUnassign={assignFormData.mappingId ? handleUnassign : undefined} isUnassigning={isUnassigning}
         routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()} error={assignError} />}
       {isModalOpen && <AddStudentModal
         routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()}

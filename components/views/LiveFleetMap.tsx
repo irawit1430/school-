@@ -4,12 +4,14 @@ import { Bell, Settings, Filter, Layers, Bus, X, PhoneCall, Focus, MessageSquare
 import { clsx } from 'clsx';
 import {
   fetchBuses, fetchDrivers, fetchDeviceLocations, fetchStudents, fetchTodayAttendance,
-  connectSocket, apiErrorMessage,
+  fetchRoutes, connectSocket, apiErrorMessage,
 } from '@/lib/api';
+import polyline from '@mapbox/polyline';
 import { getBusDisplayName } from '@/lib/buses';
 import {
   subscribeToBusPositions, mergeBusPosition, trackerState, isMoving, describeFixAge,
-  resolveBusDriver, resolveBusTrip, ALERT_ENTER_KMH, type TrackerState,
+  resolveBusDriver, resolveBusTrip, busPosition, metresFromPath, isOffRoute,
+  OFF_ROUTE_METRES, ALERT_ENTER_KMH, type TrackerState,
 } from '@/lib/liveBuses';
 import { processStudents, rosterForRoute, EMPTY_ROSTER, type RouteRoster } from '@/lib/students';
 import DynamicMap from '@/components/map/DynamicMap';
@@ -54,6 +56,9 @@ export function LiveFleetMap() {
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [rosterError, setRosterError] = useState('');
+  // Routes carry the stored polyline and stops. Without them a marker's position cannot be
+  // judged at all, and nothing could tell whether a bus had left its route.
+  const [routes, setRoutes] = useState<any[]>([]);
   // Ages are read from timestamps, so the screen must re-render as time passes even when
   // no packet arrives - that is the whole point of showing staleness.
   const [now, setNow] = useState(() => Date.now());
@@ -94,6 +99,45 @@ export function LiveFleetMap() {
       // Onboard counts are additive context, so a failure here must not take the map
       // down with it — it just stops claiming numbers it cannot back up.
       .catch(err => setRosterError(apiErrorMessage(err, 'Onboard counts unavailable.')));
+  };
+
+  useEffect(() => {
+    // Geometry changes only when someone edits a route, so this is fetched once.
+    fetchRoutes()
+      .then(rows => setRoutes(Array.isArray(rows) ? rows : []))
+      .catch(() => { /* The map still works without the overlay; it just draws no route. */ });
+  }, []);
+
+  /** routeId → decoded path and stops, decoded once rather than per render. */
+  const routeShapes = useMemo(() => {
+    const out = new Map<string, { path: [number, number][]; stops: any[] }>();
+    for (const route of routes) {
+      let path: [number, number][] = [];
+      if (typeof route.geometry === 'string' && route.geometry) {
+        try {
+          path = polyline.decode(route.geometry) as [number, number][];
+        } catch {
+          // A malformed stored polyline must not take the whole map down.
+        }
+      }
+      out.set(route.id, { path, stops: route.stops ?? [] });
+    }
+    return out;
+  }, [routes]);
+
+  const routeIdFor = (bus: any): string | null =>
+    resolveBusTrip(bus, drivers)?.routeId ?? bus?.routeId ?? null;
+
+  /**
+   * How far this bus is from the route it is supposed to be driving, in metres, or null
+   * when either the position or the route shape is missing.
+   */
+  const offRouteMetres = (bus: any): number | null => {
+    const position = busPosition(bus);
+    if (!position) return null;
+    const routeId = routeIdFor(bus);
+    const path = routeId ? routeShapes.get(routeId)?.path : null;
+    return path && path.length > 1 ? metresFromPath(position, path) : null;
   };
 
   useEffect(() => {
@@ -190,15 +234,19 @@ export function LiveFleetMap() {
   // The old single count stood in for both and was labelled "On Schedule", which was a
   // third thing again and related to neither.
   const fleetCounts = useMemo(() => {
-    let moving = 0, stopped = 0, notReporting = 0, overspeed = 0;
+    let moving = 0, stopped = 0, notReporting = 0, overspeed = 0, offRoute = 0;
     for (const bus of buses) {
       if (trackerState(bus, now) === 'silent') notReporting++;
       else if (isMoving(bus)) moving++;
       else stopped++;
       if (bus.speeding) overspeed++;
+      // Only meaningful while the tracker is live: a stale fix compared against a route
+      // says where the bus was, not where it is.
+      if (trackerState(bus, now) !== 'silent' && isOffRoute(offRouteMetres(bus))) offRoute++;
     }
-    return { moving, stopped, notReporting, overspeed };
-  }, [buses, now]);
+    return { moving, stopped, notReporting, overspeed, offRoute };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buses, now, routeShapes, drivers]);
 
   const selectedBus = useMemo(
     () => buses.find(b => b.id === selectedBusId),
@@ -210,6 +258,9 @@ export function LiveFleetMap() {
     : { name: 'Unassigned', phone: null, assigned: false };
   const selectedTrip = selectedBus ? resolveBusTrip(selectedBus, drivers) : null;
   const selectedRoster = selectedBus ? rosterFor(selectedBus) : EMPTY_ROSTER;
+  const selectedRouteId = selectedBus ? routeIdFor(selectedBus) : null;
+  const selectedShape = selectedRouteId ? routeShapes.get(selectedRouteId) ?? null : null;
+  const selectedOffRoute = selectedBus ? offRouteMetres(selectedBus) : null;
 
   const filteredBuses = useMemo(() => {
     return buses.filter(bus => {
@@ -304,6 +355,17 @@ export function LiveFleetMap() {
                 {fleetCounts.overspeed}
               </span>
             </div>
+            {fleetCounts.offRoute > 0 && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-fuchsia-600 animate-pulse"></div>
+                  Off route (&gt;{OFF_ROUTE_METRES}m)
+                </div>
+                <span className="text-[11px] font-bold text-fuchsia-700">
+                  {fleetCounts.offRoute}
+                </span>
+              </div>
+            )}
             {lastPacketAt && (
               <p className="pt-1.5 border-t border-slate-100 text-[10px] font-normal text-slate-400">
                 Last telemetry {describeFixAge({ gpsLogs: [{ timestamp: new Date(lastPacketAt).toISOString() }] }, now)}
@@ -347,6 +409,14 @@ export function LiveFleetMap() {
                   {isMoving(selectedBus) ? `${(selectedBus.gpsLogs?.[0]?.speed ?? 0).toFixed(1)} km/h` : 'Stopped'}
                 </span>
               </div>
+              {isOffRoute(selectedOffRoute) && selectedTracker !== 'silent' && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Off route</span>
+                  <span className="font-bold text-sm text-fuchsia-300">
+                    {Math.round(selectedOffRoute!)} m
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Onboard</span>
                 <span className="font-bold text-sm text-white">
@@ -546,6 +616,7 @@ export function LiveFleetMap() {
               // One resolution path, shared with the focus HUD above the map.
               const driver = resolveBusDriver(bus, driverByBus[bus.id], drivers);
               const roster = rosterFor(bus);
+              const strayed = tracker !== 'silent' && isOffRoute(offRouteMetres(bus));
 
               return (
                 <div
@@ -595,6 +666,11 @@ export function LiveFleetMap() {
                       )}>
                         {isAlert ? 'Overspeed' : moving ? 'Moving' : 'Stopped'}
                       </span>
+                      {strayed && (
+                        <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full tracking-wider bg-fuchsia-100 text-fuchsia-700">
+                          Off route
+                        </span>
+                      )}
                     </div>
                   </div>
 
