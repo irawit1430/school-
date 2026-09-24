@@ -35,7 +35,7 @@ type EditorStop = Stop & {
 // PUT .../reorder (set all orderIdx). PUT /routes/:id itself only takes metadata.
 // `currentStops` carry a backend `id` when they came from the loaded route;
 // newly-added stops have no `id` (only a client `uid`).
-async function syncRouteStops(
+export async function syncRouteStops(
   routeId: string,
   initialStops: any[],
   currentStops: EditorStop[],
@@ -72,7 +72,11 @@ async function syncRouteStops(
         orig.lng !== s.lng ||
         (orig.address ?? null) !== (s.address ?? null) ||
         // Issue 4a: reordering must update arrival offsets
-        (orig.orderIdx ?? null) !== i;
+        (orig.orderIdx ?? null) !== i ||
+        // Moving one stop changes the minutes of every stop after it. Comparing only
+        // the stop's own fields left those later stops on their old times, and the
+        // parents' ETA is built from them.
+        (orig.expectedArrivalMinutes ?? null) !== body.expectedArrivalMinutes;
       if (changed) await updateStop(routeId, s.id, body);
       finalOrder.push({ id: s.id, orderIdx: i });
     } else {
@@ -159,7 +163,8 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
   const lastGeocodeRef = useRef<number>(0);
   // Route id we created this session — prevents creating a duplicate route on retry
   const createdRouteIdRef = useRef<string | null>(null);
-  // Recompute existing routes when the editor opens so their ETA reflects current traffic.
+  // Recompute existing routes when the editor opens so their stop times reflect
+  // school-morning traffic (see nextSchoolMorning).
   const computedSigRef = useRef<string>('');
 
   // Issue 5: Dirty-state snapshot — captures the initial form state so any
@@ -569,7 +574,7 @@ export default function RouteMapEditor({ schoolId, initialRoute, onSaved, onCanc
                   {osrm.trafficAware ? 'Traffic-aware ETA' : 'Est. Duration'}
                 </p>
                 <p className="text-lg font-bold text-slate-900">{osrm.durationMin} min</p>
-                {osrm.trafficAware && <p className="text-[10px] text-slate-500">Google live traffic</p>}
+                {osrm.trafficAware && <p className="text-[10px] text-slate-500">Google traffic, school morning</p>}
               </div>
             </div>
           )}

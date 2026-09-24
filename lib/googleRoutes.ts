@@ -17,8 +17,25 @@ type GoogleRouteShape = {
 const coordinate = (value: number | (() => number)) =>
   typeof value === 'function' ? value() : value;
 
+const IST_OFFSET_MS = 330 * 60_000; // India has no daylight saving
+const DAY_MS = 86_400_000;
+
 /**
- * Calculate the route that Google considers most accurate for current traffic.
+ * The next school morning at 07:30 India time, Sunday skipped: when these buses drive.
+ * Stop times used to be priced at the moment the admin pressed save, so a route edited
+ * at 3 pm carried 3 pm traffic into every 7:30 am ETA.
+ */
+export function nextSchoolMorning(now: Date = new Date()): Date {
+  const wall = new Date(now.getTime() + IST_OFFSET_MS); // UTC fields read India wall time
+  let at = Date.UTC(wall.getUTCFullYear(), wall.getUTCMonth(), wall.getUTCDate(), 7, 30) - IST_OFFSET_MS;
+  // Google refuses a departure in the past; a minute's margin covers the round trip.
+  if (at <= now.getTime() + 60_000) at += DAY_MS;
+  if (new Date(at + IST_OFFSET_MS).getUTCDay() === 0) at += DAY_MS;
+  return new Date(at);
+}
+
+/**
+ * Calculate the route that Google considers most accurate for school-morning traffic.
  *
  * Sources:
  * https://developers.google.com/maps/documentation/javascript/routes/traffic-options
@@ -26,7 +43,7 @@ const coordinate = (value: number | (() => number)) =>
  */
 export async function fetchGoogleTrafficRoute(
   stops: Stop[],
-  departureTime: Date = new Date(Date.now() + 60_000),
+  departureTime: Date = nextSchoolMorning(),
 ): Promise<TrafficRouteResult | null> {
   if (stops.length < 2) return null;
 
