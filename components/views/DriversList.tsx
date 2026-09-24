@@ -18,7 +18,7 @@ const requireList = <T,>(data: unknown): T[] => {
 export function DriversList() {
   const [drivers, setDrivers] = useState<DriverRecord[]>([]);
   const [buses, setBuses] = useState<DriverBus[]>([]);
-  const [routes, setRoutes] = useState<{ id: string; name: string }[]>([]);
+  const [routes, setRoutes] = useState<{ id: string; name: string; estimatedDuration?: number | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(true);

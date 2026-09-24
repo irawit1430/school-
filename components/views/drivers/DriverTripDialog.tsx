@@ -6,9 +6,13 @@ import { getDriverTrips, toLocalDateTime, type DriverBus, type DriverRecord, typ
 import { DriverDialog } from './DriverDialog';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
 import type { Direction } from '@/lib/runs';
+import { findDriverClashes } from '@/lib/trips';
+import { DriverClashWarning } from '@/components/ui/DriverClashWarning';
+
+type RouteOption = { id: string; name: string; estimatedDuration?: number | null };
 
 export function DriverTripDialog({ driver, trip, buses, routes, loading, loadError, onRetry, onClose, onSaved }: {
-  driver: DriverRecord; trip?: DriverTrip; buses: DriverBus[]; routes: { id: string; name: string }[];
+  driver: DriverRecord; trip?: DriverTrip; buses: DriverBus[]; routes: RouteOption[];
   loading: boolean; loadError: string; onRetry: () => void; onClose: () => void; onSaved: () => void;
 }) {
   const [form, setForm] = useState<{ busId: string; routeId: string; direction: Direction | ''; departure: string }>({ busId: trip?.busId ?? trip?.bus?.id ?? '', routeId: trip?.routeId ?? trip?.route?.id ?? '', direction: trip?.direction ?? '', departure: toLocalDateTime(trip?.scheduledStart) });
@@ -17,6 +21,12 @@ export function DriverTripDialog({ driver, trip, buses, routes, loading, loadErr
   const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500';
   const blocked = loading || !!loadError || !buses.length || !routes.length;
   const plannedCount = getDriverTrips(driver).planned.length;
+  const minutesFor = (routeId?: string | null) => routes.find(route => route.id === routeId)?.estimatedDuration;
+  const clashes = findDriverClashes(driver.driverTrips, {
+    start: form.departure ? new Date(form.departure).toISOString() : null,
+    durationMinutes: minutesFor(form.routeId),
+    excludeTripId: trip?.id,
+  }, { durationOf: other => minutesFor(other.routeId ?? other.route?.id) });
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -48,7 +58,8 @@ export function DriverTripDialog({ driver, trip, buses, routes, loading, loadErr
   return <DriverDialog title={trip ? 'Edit planned trip' : 'Plan a one-time trip'} busy={saving} onClose={onClose}>
     <form onSubmit={save} className="space-y-4 p-6">
       <p className="text-sm">Driver: <strong>{driver.name}</strong></p>
-      {!trip && plannedCount > 0 && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">This driver already has {plannedCount} planned {plannedCount === 1 ? 'trip' : 'trips'}. Check the departure times before adding another.</p>}
+      <DriverClashWarning driverName={driver.name} clashes={clashes} />
+      {!trip && plannedCount > 0 && !clashes.length && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">This driver already has {plannedCount} planned {plannedCount === 1 ? 'trip' : 'trips'}. Check the departure times before adding another.</p>}
       {(error || loadError) && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error || loadError}{loadError && <button type="button" disabled={loading} onClick={onRetry} className="ml-2 underline">Retry loading options</button>}</div>}
       {loading && <p role="status" className="text-sm text-slate-500">Loading buses and routes…</p>}
       {!loading && !loadError && (!buses.length || !routes.length) && <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
