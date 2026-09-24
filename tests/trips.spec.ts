@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ACTIVE_TRIP_STATUSES, isActiveTrip, activeTripsSoonestFirst, describeTrip, nextDepartureAt, routeHasMatchingTrip } from '../lib/trips';
+import { ACTIVE_TRIP_STATUSES, isActiveTrip, activeTripsSoonestFirst, describeTrip, nextDepartureAt, routeHasMatchingTrip, findDriverClashes } from '../lib/trips';
 
 // These guard the two defects that kept recurring across the platform: a DELAYED trip
 // being treated as not-live, and "the current trip" being whichever element the API
@@ -96,4 +96,51 @@ test('next departure reads the soonest ACTIVE trip, including one already runnin
   expect(nextDepartureAt([later, running, done])).toBe(Date.parse(running.scheduledStart));
   expect(nextDepartureAt([done])).toBe(0);
   expect(nextDepartureAt([])).toBe(0);
+});
+
+// ─── findDriverClashes ────────────────────────────────────────────────────────
+// A driver can only run one trip at a time; these pin down when two trips count as "at
+// the same time", which is the whole of the dashboard's double-booking warning.
+
+const at = (hhmm: string) => `2026-09-24T${hhmm}:00.000Z`;
+const morning = { id: 'am', status: 'PLANNED', routeId: 'r1', scheduledStart: at('07:00') };
+
+test('a trip leaving inside another trip of the same driver clashes', () => {
+  expect(findDriverClashes([morning], { start: at('07:30') }).map(t => t.id)).toEqual(['am']);
+  expect(findDriverClashes([morning], { start: at('06:30') }).map(t => t.id)).toEqual(['am']);
+});
+
+test('back-to-back trips do not clash', () => {
+  expect(findDriverClashes([morning], { start: at('08:00') })).toEqual([]);
+  expect(findDriverClashes([morning], { start: at('06:00') })).toEqual([]);
+});
+
+test('the route duration decides how long a trip occupies its driver', () => {
+  const durationOf = () => 120;
+  expect(findDriverClashes([morning], { start: at('08:30') }, { durationOf }).map(t => t.id)).toEqual(['am']);
+  expect(findDriverClashes([morning], { start: at('05:30'), durationMinutes: 45 })).toEqual([]);
+  expect(findDriverClashes([morning], { start: at('05:30'), durationMinutes: 120 }).map(t => t.id)).toEqual(['am']);
+});
+
+test('finished, cancelled and the edited trip itself never clash', () => {
+  const trips = [{ ...morning, status: 'COMPLETED' }, { ...morning, id: 'x', status: 'CANCELLED' }];
+  expect(findDriverClashes(trips, { start: at('07:00') })).toEqual([]);
+  expect(findDriverClashes([morning], { start: at('07:00'), excludeTripId: 'am' })).toEqual([]);
+});
+
+test('a running trip holds its driver until it ends, even past its planned length', () => {
+  const late = { id: 'late', status: 'DELAYED', scheduledStart: at('07:00'), startTime: at('07:10') };
+  const now = Date.parse(at('09:00'));
+  expect(findDriverClashes([late], { start: at('09:15') }, { now })).toEqual([]);
+  expect(findDriverClashes([late], { start: at('08:50') }, { now }).map(t => t.id)).toEqual(['late']);
+});
+
+test('with no departure time only a trip running right now is in the way', () => {
+  const running = { id: 'run', status: 'ON_SCHEDULE', startTime: at('07:00') };
+  expect(findDriverClashes([morning], { start: null })).toEqual([]);
+  expect(findDriverClashes([morning, running], { start: null }).map(t => t.id)).toEqual(['run']);
+});
+
+test('a planned trip with no departure time cannot be placed and is left out', () => {
+  expect(findDriverClashes([{ id: 'u', status: 'PLANNED', scheduledStart: null }], { start: at('07:00') })).toEqual([]);
 });

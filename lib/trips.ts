@@ -123,3 +123,51 @@ export const routeHasMatchingTrip = (
     (!driverId || trip.driverId === driverId) &&
     (!status || trip.status === status));
 };
+
+/**
+ * How long a trip is assumed to occupy its driver when its route has no estimated
+ * duration. Deliberately generous: a missed warning costs a morning, a spare one costs
+ * the admin a glance at two departure times.
+ */
+export const DEFAULT_TRIP_MINUTES = 60;
+
+const RUNNING_STATUSES = ['ON_SCHEDULE', 'DELAYED'];
+
+/**
+ * The driver's other active trips that would collide with a trip leaving at `start`.
+ *
+ * A driver can only run one trip at a time — the server refuses to start a second while
+ * the first is live — but nothing stops an admin *planning* two at once. This is the
+ * warning for that, so the clash is found at the desk instead of by the driver at 7am.
+ *
+ * Each trip is taken to occupy [departure, departure + route duration). A trip running
+ * right now occupies at least until now, however long it was meant to take: it has not
+ * ended until the driver ends it. With no `start`, the new trip can be started whenever
+ * the driver likes, so only a trip running right now is in the way. A planned trip with
+ * no departure time cannot be placed and is left out.
+ */
+export const findDriverClashes = (
+  trips: any[] | null | undefined,
+  candidate: { start?: string | null; durationMinutes?: number | null; excludeTripId?: string | null },
+  opts: { durationOf?: (trip: any) => number | null | undefined; now?: number } = {},
+): any[] => {
+  const now = opts.now ?? Date.now();
+  const span = (minutes?: number | null) => (minutes && minutes > 0 ? minutes : DEFAULT_TRIP_MINUTES) * 60_000;
+  const candidateStart = Date.parse(candidate.start ?? '');
+  const candidateEnd = candidateStart + span(candidate.durationMinutes);
+
+  return activeTripsSoonestFirst(trips).filter(trip => {
+    if (candidate.excludeTripId && trip.id === candidate.excludeTripId) return false;
+    const running = RUNNING_STATUSES.includes(trip.status);
+    if (!Number.isFinite(candidateStart)) return running;
+
+    let start = Date.parse((running && trip.startTime) || trip.scheduledStart || '');
+    if (!Number.isFinite(start)) {
+      if (!running) return false;
+      start = now;
+    }
+    let end = start + span(opts.durationOf?.(trip));
+    if (running) end = Math.max(end, now);
+    return candidateStart < end && start < candidateEnd;
+  });
+};

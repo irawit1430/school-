@@ -17,10 +17,11 @@ import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { EditTripModal } from '@/components/views/routes/EditTripModal';
+import { DriverClashWarning } from '@/components/ui/DriverClashWarning';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
 import type { Direction } from '@/lib/runs';
 import { getBusDisplayName } from '@/lib/buses';
-import { activeTripsSoonestFirst, isActiveTrip, describeTrip, routeDeleteBlock, nextDepartureAt, routeHasMatchingTrip } from '@/lib/trips';
+import { activeTripsSoonestFirst, isActiveTrip, describeTrip, routeDeleteBlock, nextDepartureAt, routeHasMatchingTrip, findDriverClashes } from '@/lib/trips';
 import { DIRECTION_LABELS } from '@/lib/runs';
 
 const RouteMapEditor = dynamic(() => import('@/components/map/RouteMapEditor'), { ssr: false });
@@ -1063,6 +1064,16 @@ export function ManageRoutes() {
                   disabled={isAssignSubmitting}
                 />
               </div>
+              {(() => {
+                const driver = drivers.find((d: any) => d.id === assignFormData.driverId);
+                if (!driver) return null;
+                const minutesFor = (routeId?: string) => routes.find((r: any) => r.id === routeId)?.estimatedDuration;
+                const clashes = findDriverClashes(driver.driverTrips, {
+                  start: assignFormData.scheduledStart ? fromDatetimeLocalToISO(assignFormData.scheduledStart) : null,
+                  durationMinutes: minutesFor(assignFormData.routeId),
+                }, { durationOf: trip => minutesFor(trip.routeId) });
+                return <DriverClashWarning driverName={driver.name} clashes={clashes} />;
+              })()}
               <div className="pt-4 flex gap-3 justify-end">
                 <button
                   type="button"
@@ -1114,6 +1125,7 @@ export function ManageRoutes() {
         trip={editingTrip}
         buses={buses}
         drivers={drivers}
+        routes={routes}
         onSuccess={() => {
           setEditingTrip(null);
           loadRoutes(true);
