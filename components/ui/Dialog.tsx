@@ -1,16 +1,36 @@
 import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
-interface StudentDialogProps {
+/**
+ * The app's one modal.
+ *
+ * Every other dialog in this codebase was a styled div: no role, no aria-modal, no focus
+ * containment, no Escape. A keyboard user tabbed straight out of an open modal into the
+ * page behind it, where focus is invisible under the overlay, and a screen reader was
+ * never told a dialog had opened. Native `<dialog>` + showModal() gives all of that for
+ * free, which is why this one was already right and the others were not.
+ */
+interface DialogProps {
   title: React.ReactNode;
   children: React.ReactNode;
   onClose: () => void;
   busy?: boolean;
   size?: 'md' | 'lg';
   dismissible?: boolean;
+  /**
+   * True when the form holds input worth keeping. Escape and backdrop clicks then confirm
+   * first — a part-written broadcast explaining that buses are delayed by flooding is
+   * usually composed under time pressure, and losing it to a stray click meant typing it
+   * twice before anyone noticed the pattern.
+   */
+  dirty?: boolean;
+  discardPrompt?: string;
 }
 
-export function StudentDialog({ title, children, onClose, busy = false, size = 'md', dismissible = true }: StudentDialogProps) {
+export function Dialog({
+  title, children, onClose, busy = false, size = 'md', dismissible = true,
+  dirty = false, discardPrompt = 'Discard your changes?',
+}: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const startedOnBackdrop = useRef(false);
@@ -28,7 +48,11 @@ export function StudentDialog({ title, children, onClose, busy = false, size = '
     };
   }, []);
 
-  const requestClose = () => { if (!busy && dismissible) onClose(); };
+  const requestClose = () => {
+    if (busy || !dismissible) return;
+    if (dirty && !window.confirm(discardPrompt)) return;
+    onClose();
+  };
   const isBackdrop = (event: React.MouseEvent<HTMLDialogElement> | React.PointerEvent<HTMLDialogElement>) => {
     if (event.target !== event.currentTarget) return false;
     const bounds = event.currentTarget.getBoundingClientRect();

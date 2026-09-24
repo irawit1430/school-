@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- Avatars include locally generated data URLs. */
 import React from 'react';
 import { STUDENT_STATUS_META, type StudentStatus } from '@/lib/students';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface StudentProfileModalProps {
   viewStudent: any;
@@ -27,7 +27,7 @@ export function StudentProfileModal({ viewStudent, onClose, onResetParentPasswor
   ];
 
   return (
-    <StudentDialog title="Student Profile" onClose={onClose} busy={resettingParent}>
+    <Dialog title="Student Profile" onClose={onClose} busy={resettingParent}>
       <div className="mb-6 flex items-center gap-4">
         {viewStudent.avatar && <img src={viewStudent.avatar} alt="" className="h-16 w-16 shrink-0 rounded-full bg-slate-200 object-cover" />}
         <div className="min-w-0">
@@ -52,6 +52,6 @@ export function StudentProfileModal({ viewStudent, onClose, onResetParentPasswor
           </button>
         </div>
       )}
-    </StudentDialog>
+    </Dialog>
   );
 }

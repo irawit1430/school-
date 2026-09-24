@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -39,6 +39,13 @@ const escapeHtml = (v: string) =>
 
 interface RealMapProps {
   buses: any[];
+  /**
+   * The selected bus's route, decoded. Without it a marker's position is
+   * uninterpretable — "is it where it should be?" cannot be judged against blank
+   * streets, so an operator had to know every route by heart to read this screen.
+   */
+  routePath?: [number, number][] | null;
+  routeStops?: { id?: string; name?: string; lat?: number; lng?: number }[] | null;
   zoom?: number;
   center?: [number, number];
   height?: string;
@@ -139,7 +146,9 @@ export default function RealMap({
   className = '',
   selectedBusId = null,
   onSelectBus,
-  filterSingleBus = false
+  filterSingleBus = false,
+  routePath = null,
+  routeStops = null,
 }: RealMapProps) {
   const defaultCenter = center || [CONFIG.MAP_CENTER.lat, CONFIG.MAP_CENTER.lng] as [number, number];
 
@@ -232,6 +241,31 @@ export default function RealMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
+        {/* Drawn under the buses: the route first, then its stops, then the vehicles on
+            top, so a marker is never hidden behind the line it is being judged against. */}
+        {routePath && routePath.length > 1 && (
+          <>
+            {/* A casing under the line keeps it legible over dark tiles and parks. */}
+            <Polyline positions={routePath} pathOptions={{ color: '#ffffff', weight: 9, opacity: 0.7 }} />
+            <Polyline positions={routePath} pathOptions={{ color: '#ea580c', weight: 4, opacity: 0.9 }} />
+          </>
+        )}
+
+        {(routeStops ?? []).map((stop: { id?: string; name?: string; lat?: number; lng?: number }, index: number) =>
+          typeof stop.lat === 'number' && typeof stop.lng === 'number' ? (
+            <CircleMarker
+              key={stop.id ?? `${stop.lat},${stop.lng}`}
+              center={[stop.lat, stop.lng]}
+              radius={5}
+              pathOptions={{ color: '#ffffff', weight: 2, fillColor: '#0f172a', fillOpacity: 1 }}
+            >
+              <Tooltip direction="top" offset={[0, -6]}>
+                {index + 1}. {stop.name || 'Unnamed stop'}
+              </Tooltip>
+            </CircleMarker>
+          ) : null,
+        )}
+
         {displayedBuses.map(bus => {
           const lat = bus.gpsLogs?.[0]?.lat;
           const lng = bus.gpsLogs?.[0]?.lng;

@@ -1,5 +1,5 @@
 import React, { useId } from 'react';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 import { RouteStopPicker } from './RouteStopPicker';
 import type { StudentMapping } from '@/lib/students';
 
@@ -16,6 +16,9 @@ interface AssignBusModalProps {
   routesLoading?: boolean;
   routesError?: string | null;
   onRetryRoutes?: () => void;
+  /** Removes the mapping being edited. Absent in create mode — nothing to remove yet. */
+  onUnassign?: () => void;
+  isUnassigning?: boolean;
   error?: string | null;
 }
 
@@ -26,7 +29,8 @@ const legLabel = (direction: StudentMapping['direction']) =>
 
 export function AssignBusModal({
   onClose, onSubmit, assignStudent, assignFormData, setAssignFormData, isAssignSubmitting, routes,
-  mappings = [], routesLoading = false, routesError, onRetryRoutes, error,
+  mappings = [], routesLoading = false, routesError, onRetryRoutes, onUnassign,
+  isUnassigning = false, error,
 }: AssignBusModalProps) {
   const id = useId();
   const selectedRoute = routes.find(route => route.id === assignFormData.routeId);
@@ -36,8 +40,9 @@ export function AssignBusModal({
   const editing = mappings.find(mapping => mapping.id === assignFormData.mappingId) ?? null;
   // Moving to the stop the mapping already points at is a no-op write, not a change.
   const unchanged = !!editing && editing.routeStopId === assignFormData.routeStopId;
+  const busy = isAssignSubmitting || isUnassigning;
   const canSave = !!assignStudent?.id && !!selectedStop && !unchanged
-    && !isAssignSubmitting && !routesLoading && !routesError;
+    && !busy && !routesLoading && !routesError;
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -55,7 +60,7 @@ export function AssignBusModal({
   };
 
   return (
-    <StudentDialog
+    <Dialog
       title={editing ? 'Change Pickup Route & Stop' : 'Assign Pickup Route & Stop'}
       onClose={onClose}
       busy={isAssignSubmitting}
@@ -76,7 +81,7 @@ export function AssignBusModal({
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {/* Not disabled on routesError: the picker renders its own Retry there, and
             disabling the fieldset would make the one button that fixes it unclickable. */}
-        <fieldset disabled={isAssignSubmitting} className="min-w-0 space-y-4">
+        <fieldset disabled={busy} className="min-w-0 space-y-4">
           {/* A child with separate morning and afternoon stops holds two mappings; only
               one of them is being moved, so say which. */}
           {mappings.length > 1 && <div>
@@ -107,13 +112,27 @@ export function AssignBusModal({
               : undefined}
           />
         </fieldset>
-        <div className="flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-4">
-          <button type="button" onClick={onClose} disabled={isAssignSubmitting} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={!canSave} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-70">
-            {isAssignSubmitting ? 'Saving...' : editing ? 'Move to This Stop' : 'Save Route & Stop'}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          {/* Separated from Save, because it is the one action here that cannot be undone
+              by moving the child somewhere else. */}
+          {editing && onUnassign ? (
+            <button
+              type="button"
+              onClick={onUnassign}
+              disabled={busy}
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+            >
+              {isUnassigning ? 'Removing…' : 'Remove from bus'}
+            </button>
+          ) : <span />}
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" onClick={onClose} disabled={busy} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+            <button type="submit" disabled={!canSave} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-70">
+              {isAssignSubmitting ? 'Saving...' : editing ? 'Move to This Stop' : 'Save Route & Stop'}
+            </button>
+          </div>
         </div>
       </form>
-    </StudentDialog>
+    </Dialog>
   );
 }

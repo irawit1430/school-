@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 import { RouteStopPicker } from './RouteStopPicker';
 
 interface AddStudentModalProps {
@@ -48,7 +48,7 @@ export function AddStudentModal({
   };
 
   return (
-    <StudentDialog title="Register New Student" onClose={onClose} busy={isSubmitting}>
+    <Dialog title="Register New Student" onClose={onClose} busy={isSubmitting}>
       <form onSubmit={handleSubmit} noValidate>
         {error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         <fieldset disabled={isSubmitting} className="min-w-0 space-y-4">
@@ -103,6 +103,6 @@ export function AddStudentModal({
           </div>
         </fieldset>
       </form>
-    </StudentDialog>
+    </Dialog>
   );
 }

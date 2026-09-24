@@ -190,3 +190,66 @@ export function resolveBusTrip(bus: any, drivers: any[]): any | null {
 /** The route a bus is currently serving, from its running trip. */
 export const resolveBusRouteId = (bus: any, drivers: any[]): string | null =>
   resolveBusTrip(bus, drivers)?.routeId ?? bus?.routeId ?? null;
+
+// ─── Is this bus still on its route? ────────────────────────────────────────
+//
+// Every route already stores an encoded polyline, and nothing ever compared a position
+// against it. Route deviation is the highest-signal safety event in vehicle tracking and
+// the one parents assume is being watched — a driver taking an unapproved detour, skipping
+// a stop, or running a personal errand was invisible unless someone happened to be staring
+// at the right marker at the right moment.
+
+/** Metres per degree of latitude. Close enough everywhere; longitude scales by cos(lat). */
+const M_PER_DEG_LAT = 111_320;
+
+/**
+ * Shortest distance in metres from a point to a polyline, or null for an empty path.
+ *
+ * Works in a local flat projection centred on the point rather than running haversine per
+ * segment: over a city-scale route the error is well under the tolerance below, and a
+ * forty-stop path gets measured on every telemetry flush.
+ */
+export function metresFromPath(
+  point: [number, number],
+  path: readonly [number, number][] | null | undefined,
+): number | null {
+  if (!path || path.length === 0) return null;
+  const [lat0, lng0] = point;
+  const mPerDegLng = M_PER_DEG_LAT * Math.cos((lat0 * Math.PI) / 180);
+  const toXY = ([lat, lng]: [number, number]): [number, number] =>
+    [(lng - lng0) * mPerDegLng, (lat - lat0) * M_PER_DEG_LAT];
+
+  if (path.length === 1) {
+    const [x, y] = toXY(path[0]);
+    return Math.hypot(x, y);
+  }
+
+  let best = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const [x1, y1] = toXY(path[i]);
+    const [x2, y2] = toXY(path[i + 1]);
+    const dx = x2 - x1, dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+    // Where the perpendicular from the point falls on this segment, clamped to its ends
+    // so a bus beyond the last stop measures to the stop, not to the infinite line.
+    const t = lengthSq === 0 ? 0 : Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / lengthSq));
+    best = Math.min(best, Math.hypot(x1 + t * dx, y1 + t * dy));
+  }
+  return best;
+}
+
+/**
+ * Deliberately generous. GPS drifts in dense areas, a stored polyline is a routing
+ * engine's idea of the road rather than the road, and a deviation alert nobody trusts is
+ * worse than none — so this fires on a detour, not on a wide turn.
+ */
+export const OFF_ROUTE_METRES = 250;
+
+export const isOffRoute = (metres: number | null): boolean =>
+  metres !== null && metres > OFF_ROUTE_METRES;
+
+/** The bus's current fix, or null when it has never reported one. */
+export const busPosition = (bus: any): [number, number] | null => {
+  const lat = bus?.gpsLogs?.[0]?.lat, lng = bus?.gpsLogs?.[0]?.lng;
+  return typeof lat === 'number' && typeof lng === 'number' ? [lat, lng] : null;
+};

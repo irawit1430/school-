@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   describeFixAge, fixAgeMs, isMoving, isSpeeding, resolveBusDriver,
   SILENT_AFTER_MS, STALE_AFTER_MS, trackerState,
+  metresFromPath, isOffRoute, OFF_ROUTE_METRES, busPosition,
 } from './liveBuses';
 
 const now = Date.parse('2026-09-19T08:00:00Z');
@@ -83,5 +84,48 @@ describe('one driver identity for card and focus view', () => {
     expect(resolved.assigned).toBe(false);
     expect(resolved.name).toBe('Unassigned');
     expect(resolved.phone).toBeNull();
+  });
+});
+
+describe('has this bus left its route', () => {
+  // A straight ~1.1 km east-west run near Bengaluru, as a stored polyline would give it.
+  const path: [number, number][] = [[12.9700, 77.5900], [12.9700, 77.6000]];
+
+  it('measures zero on the line and grows perpendicular to it', () => {
+    expect(metresFromPath([12.9700, 77.5950], path)).toBeLessThan(1);
+    // 0.001 degree of latitude is ~111 m.
+    const off = metresFromPath([12.9710, 77.5950], path)!;
+    expect(off).toBeGreaterThan(100);
+    expect(off).toBeLessThan(120);
+  });
+
+  it('clamps to the ends, so a bus past the last stop measures to the stop', () => {
+    // Well east of the path's end, not perpendicular to any segment.
+    const beyond = metresFromPath([12.9700, 77.6100], path)!;
+    const endToPoint = metresFromPath([12.9700, 77.6100], [[12.9700, 77.6000]])!;
+    expect(Math.abs(beyond - endToPoint)).toBeLessThan(1);
+  });
+
+  it('does not flag a wide turn or ordinary GPS drift', () => {
+    // ~110 m off is a bus on the far side of a dual carriageway, not a detour.
+    expect(isOffRoute(metresFromPath([12.9710, 77.5950], path))).toBe(false);
+    expect(OFF_ROUTE_METRES).toBeGreaterThanOrEqual(150);
+  });
+
+  it('flags a real detour', () => {
+    // ~550 m off the route.
+    expect(isOffRoute(metresFromPath([12.9750, 77.5950], path))).toBe(true);
+  });
+
+  it('never flags when there is nothing to compare against', () => {
+    expect(metresFromPath([12.97, 77.59], [])).toBeNull();
+    expect(metresFromPath([12.97, 77.59], null)).toBeNull();
+    expect(isOffRoute(null)).toBe(false);
+  });
+
+  it('reads a position only when the bus has actually reported one', () => {
+    expect(busPosition({ gpsLogs: [{ lat: 12.9, lng: 77.6 }] })).toEqual([12.9, 77.6]);
+    expect(busPosition({ gpsLogs: [{ speed: 30 }] })).toBeNull();
+    expect(busPosition({})).toBeNull();
   });
 });

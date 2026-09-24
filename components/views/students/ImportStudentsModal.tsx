@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Download, AlertTriangle } from 'lucide-react';
 import { parseStudentImportCSV, STUDENT_IMPORT_TEMPLATE, type StudentImportPreview } from '@/lib/studentImport';
-import { StudentDialog } from './StudentDialog';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface ImportStudentsModalProps {
   onClose: () => void;
@@ -68,7 +68,7 @@ export function ImportStudentsModal({ onClose, onImport, isSubmitting, error: su
   const headerErrors = preview?.errors.filter(item => item.rowNumber === 1) ?? [];
 
   return (
-    <StudentDialog title="Import students from CSV" onClose={onClose} busy={isSubmitting || reading} size="lg">
+    <Dialog title="Import students from CSV" onClose={onClose} busy={isSubmitting || reading} size="lg">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-2 text-sm text-slate-600">
           <p>Use one student per row. All four columns are required:</p>
@@ -136,6 +136,6 @@ export function ImportStudentsModal({ onClose, onImport, isSubmitting, error: su
           <button type="submit" disabled={!canImport} className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50">{isSubmitting ? 'Importing…' : preview?.valid ? 'Import ' + preview.totalRows + ' student' + (preview.totalRows === 1 ? '' : 's') : 'Import students'}</button>
         </div>
       </form>
-    </StudentDialog>
+    </Dialog>
   );
 }
