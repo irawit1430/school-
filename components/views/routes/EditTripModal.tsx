@@ -6,6 +6,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { getBusDisplayName } from '@/lib/buses';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
 import type { Direction } from '@/lib/runs';
+import { findDriverClashes } from '@/lib/trips';
+import { DriverClashWarning } from '@/components/ui/DriverClashWarning';
 
 interface EditTripModalProps {
   isOpen: boolean;
@@ -13,6 +15,8 @@ interface EditTripModalProps {
   trip: any;
   buses: any[];
   drivers: any[];
+  /** Only for route durations in the clash check; without it every trip counts as an hour. */
+  routes?: any[];
   onSuccess: () => void;
 }
 
@@ -44,7 +48,7 @@ function fromDatetimeLocalToISO(local: string): string {
 
 // ────────────────────────────────────────────────────────────────────────────
 
-export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess }: EditTripModalProps) {
+export function EditTripModal({ isOpen, onClose, trip, buses, drivers, routes = [], onSuccess }: EditTripModalProps) {
   const [busId, setBusId] = useState(trip?.busId || '');
   const [driverId, setDriverId] = useState(trip?.driverId || '');
   const [direction, setDirection] = useState<Direction | ''>(trip?.direction ?? '');
@@ -202,6 +206,17 @@ export function EditTripModal({ isOpen, onClose, trip, buses, drivers, onSuccess
             />
             <p className="text-[10px] text-slate-400 mt-1">Clear the field to remove the scheduled time.</p>
           </div>
+          {(() => {
+            const driver = drivers.find((d: any) => d.id === driverId);
+            if (!driver) return null;
+            const minutesFor = (routeId?: string) => routes.find((r: any) => r.id === routeId)?.estimatedDuration;
+            const clashes = findDriverClashes(driver.driverTrips, {
+              start: scheduledStart ? fromDatetimeLocalToISO(scheduledStart) : null,
+              durationMinutes: minutesFor(trip.routeId),
+              excludeTripId: trip.id,
+            }, { durationOf: other => minutesFor(other.routeId) });
+            return <DriverClashWarning driverName={driver.name} clashes={clashes} />;
+          })()}
           <div className="pt-4 flex gap-3 justify-end">
             <button
               type="button"

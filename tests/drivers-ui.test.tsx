@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { DriversList } from '../components/views/DriversList';
 import * as api from '../lib/api';
 import toast from 'react-hot-toast';
+import { toLocalDateTime } from '../lib/drivers';
 
 vi.mock('../lib/api', () => ({
   fetchDrivers: vi.fn(), fetchBuses: vi.fn(), fetchRoutes: vi.fn(),
@@ -151,6 +152,25 @@ test('new planned trip uses the license plate and existing scheduledStart contra
   await fill('trip-bus', bus.id); await fill('trip-route', 'route-1'); await pickDirection('FROM_SCHOOL');
   await fill('trip-departure', '2026-10-04T07:15'); await submit();
   expect(api.createTrip).toHaveBeenCalledWith({ busId: bus.id, routeId: 'route-1', driverId: driver.id, direction: 'FROM_SCHOOL', scheduledStart: new Date('2026-10-04T07:15').toISOString() });
+});
+
+// The server refuses to start a driver's second trip while the first is live, but nothing
+// stops the admin planning both. The dialog must say so before it becomes a 7am phone call.
+test('planning a trip that overlaps one the driver already has warns without blocking', async () => {
+  await render(); await click(button('View trips (1)')); await click(button('Plan a trip'));
+  await fill('trip-bus', bus.id); await fill('trip-route', 'route-1'); await pickDirection('TO_SCHOOL');
+  await fill('trip-departure', toLocalDateTime(new Date(Date.parse(trip.scheduledStart) + 30 * 60_000).toISOString()));
+  expect(host.querySelector('dialog')!.textContent).toContain('Asha already has a trip at this time');
+  expect(host.querySelector('dialog')!.textContent).toContain('North Gate');
+  await fill('trip-departure', toLocalDateTime(new Date(Date.parse(trip.scheduledStart) + 3 * 3_600_000).toISOString()));
+  expect(host.querySelector('dialog')!.textContent).not.toContain('at this time');
+  await fill('trip-departure', toLocalDateTime(trip.scheduledStart)); await submit();
+  expect(api.createTrip).toHaveBeenCalled();
+});
+
+test('editing a trip never reports it as clashing with itself', async () => {
+  await render(); await click(button('View trips (1)')); await click(button('Edit planned trip'));
+  expect(host.querySelector('dialog')!.textContent).not.toContain('at this time');
 });
 
 // A trip saved without a direction is stored as null, which costs the driver app its

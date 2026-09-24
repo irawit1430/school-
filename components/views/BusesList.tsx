@@ -1,6 +1,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { fetchBuses, createBus, deleteBus, fetchRoutes, fetchDrivers, createTrip, apiErrorMessage } from '@/lib/api';
+import { findDriverClashes } from '@/lib/trips';
+import { DriverClashWarning } from '@/components/ui/DriverClashWarning';
 import { Bus, Plus, Trash2, X, Route as RouteIcon, Search } from 'lucide-react';
 import { getBusDisplayName, getBusOperationalStatus, getBusRegistration } from '@/lib/buses';
 import { DirectionToggle } from '@/components/ui/DirectionToggle';
@@ -359,6 +361,12 @@ export function BusesList() {
                     </option>
                   ))}
                 </select>
+                {(() => {
+                  // No departure time on this form: the trip can start whenever the
+                  // driver likes, so only a trip they are driving right now is in the way.
+                  const driver = drivers.find((d: any) => d.id === assignFormData.driverId);
+                  return driver ? <div className="mt-2"><DriverClashWarning driverName={driver.name} clashes={findDriverClashes(driver.driverTrips, { start: null })} /></div> : null;
+                })()}
               </div>
               <DirectionToggle
                 name="bus-trip-direction"
