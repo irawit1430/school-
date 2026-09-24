@@ -70,7 +70,7 @@ export function AssignBusModal({
           <p className="break-words font-semibold text-slate-900">{assignStudent?.name}</p>
           <p className="mt-1 break-all">
             Grade: {assignStudent?.grade || 'Not provided'}
-            {assignStudent?.tag && assignStudent.tag !== 'N/A' ? ' · RFID: ' + assignStudent.tag : ''}
+            {assignStudent?.tag && assignStudent.tag !== 'N/A' ? ' · ID: ' + assignStudent.tag : ''}
           </p>
         </div>
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}

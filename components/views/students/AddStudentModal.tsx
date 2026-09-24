@@ -22,7 +22,7 @@ export function AddStudentModal({
   const id = useId();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fields = [
-    { key: 'rfidTag', label: 'RFID Tag', placeholder: 'e.g. RFID-123456789', type: 'text' },
+    { key: 'rfidTag', label: 'Student ID', placeholder: 'e.g. roll or admission number', type: 'text' },
     { key: 'name', label: 'Student Name', placeholder: 'e.g. John Doe', type: 'text', required: true },
     { key: 'grade', label: 'Grade/Class', placeholder: 'e.g. 10th', type: 'text' },
     { key: 'parentName', label: 'Parent Name', placeholder: 'e.g. Mr. Smith', type: 'text', required: true },

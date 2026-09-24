@@ -15,7 +15,7 @@ export function StudentProfileModal({ viewStudent, onClose, onResetParentPasswor
   if (!viewStudent) return null;
   const statusStyle = STUDENT_STATUS_META[viewStudent.status as StudentStatus] || STUDENT_STATUS_META['Not scanned'];
   const details = [
-    { label: 'RFID Tag', value: viewStudent.tag || 'Not provided' },
+    { label: 'Student ID', value: viewStudent.tag || 'Not provided' },
     { label: 'Assigned Route', value: viewStudent.route || 'Unassigned' },
     { label: 'Pickup Stop', value: viewStudent.stopName || 'Not assigned' },
     { label: 'Pickup Time', value: viewStudent.stopTime || 'Not provided' },

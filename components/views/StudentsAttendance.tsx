@@ -310,7 +310,7 @@ export function StudentsAttendance() {
       if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = "'" + text;
       return '"' + text.replace(/"/g, '""') + '"';
     };
-    const headers = ['Attendance Date (IST)', 'Name', 'Grade', 'RFID Tag', 'Assigned Route', 'Pickup Stop', 'Status', 'Last Event (IST)'];
+    const headers = ['Attendance Date (IST)', 'Name', 'Grade', 'Student ID', 'Assigned Route', 'Pickup Stop', 'Status', 'Last Event (IST)'];
     const content = [headers, ...rows.map(student => [reportDate, student.name, student.grade, student.tag,
       student.route, student.stopName, student.status, student.time])].map(row => row.map(cell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' }));
@@ -370,9 +370,9 @@ export function StudentsAttendance() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="relative">
-                  <label htmlFor="student-search" className="sr-only">Search students by name, parent name or email, RFID, route or stop</label>
+                  <label htmlFor="student-search" className="sr-only">Search students by name, parent name or email, student ID, route or stop</label>
                   <Search size={16} className="pointer-events-none absolute left-3 top-3 text-slate-400" />
-                  <input id="student-search" type="search" value={searchQuery} placeholder="Search students, parents, email, RFID, route or stop…"
+                  <input id="student-search" type="search" value={searchQuery} placeholder="Search students, parents, email, ID, route or stop…"
                     onChange={event => { setSearchQuery(event.target.value); setCurrentPage(1); }}
                     className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-sm" />
                 </div>
@@ -408,7 +408,7 @@ export function StudentsAttendance() {
                   {visibleStudents.map(student => <tr key={student.id} className="align-top hover:bg-slate-50">
                     <td className="px-4 py-3"><div className="flex items-center gap-3">
                       <img src={student.avatar} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
-                      <div className="min-w-0"><p className="font-semibold text-slate-900">{student.name}</p><p className="break-all text-xs text-slate-500">RFID: {student.tag}</p></div>
+                      <div className="min-w-0"><p className="font-semibold text-slate-900">{student.name}</p><p className="break-all text-xs text-slate-500">ID: {student.tag}</p></div>
                     </div></td>
                     <td className="px-4 py-3">{student.grade || '—'}</td>
                     <td className="px-4 py-3"><p className="font-medium">{student.route}</p><p className="mt-1 text-xs text-slate-500">{student.stopName || (student.route !== 'Unassigned' ? 'Stop details unavailable' : 'No pickup stop')}{student.stopTime ? ' · ' + student.stopTime : ''}</p></td>
