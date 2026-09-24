@@ -81,7 +81,7 @@ export function LeaveRequests() {
 
   const handleExportCSV = () => {
     if (leaves.length === 0) return toast.error('No leaves to export');
-    const headers = ['Student Name,RFID,Start Date,End Date,Reason,Status'];
+    const headers = ['Student Name,Student ID,Start Date,End Date,Reason,Status'];
     const escape = (v: any) => {
       const s = String(v ?? '').replace(/"/g, '""');
       return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
@@ -216,7 +216,7 @@ export function LeaveRequests() {
                           </div>
                           <div>
                             <p className="font-bold text-slate-900">{studentName}</p>
-                            <p className="text-xs text-slate-500 font-medium">RFID: {leave.student?.rfidTag || 'N/A'}</p>
+                            <p className="text-xs text-slate-500 font-medium">ID: {leave.student?.rfidTag || 'N/A'}</p>
                           </div>
                         </div>
                       </td>

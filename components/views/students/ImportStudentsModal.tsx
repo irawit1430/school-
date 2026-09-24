@@ -75,7 +75,7 @@ export function ImportStudentsModal({ onClose, onImport, isSubmitting, error: su
           <p className="break-words font-mono text-xs text-slate-900">name, rollNumber, guardianName, guardianPhone</p>
           <p>Headers are case-insensitive. Spaced names such as “Student Name”, “Roll Number”, “Parent Name” and “Guardian Phone” are also accepted.</p>
           <p>Phone numbers need 7–15 digits; +, spaces, brackets, dots and hyphens are allowed. Keep roll numbers and phone numbers as text to retain leading zeros.</p>
-          <p>Grade, RFID, parent email, route and stop columns are not imported. Use Add New Student for records that need grade, RFID or parent email, and assign pickup stops after importing.</p>
+          <p>Grade, student ID, parent email, route and stop columns are not imported. Use Add New Student for records that need grade, student ID or parent email, and assign pickup stops after importing.</p>
           <button type="button" onClick={downloadTemplate} disabled={isSubmitting} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
             <Download size={16} aria-hidden="true" /> Download CSV template
           </button>
