@@ -29,7 +29,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   };
 
   const menuItems = [
-    { href: '/overview', label: 'Overview', icon: Bus },
+    // 'Overview' named a page of asset totals. It leads with the operational figures now,
+    // and the route stays /overview so every existing link and bookmark still works.
+    { href: '/overview', label: 'Command Centre', icon: Bus },
     { href: '/map', label: 'Live Bus Tracking', icon: Map },
     { href: '/buses', label: 'Buses', icon: Bus },
     { href: '/drivers', label: 'Drivers', icon: Users },

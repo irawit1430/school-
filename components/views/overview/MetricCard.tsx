@@ -33,7 +33,14 @@ export function MetricCard({ title, value, trend, icon: Icon, color, loading = f
         {loading ? (
           <Skeleton className="h-6 w-12 sm:h-7 sm:w-14 lg:h-9 lg:w-20" />
         ) : (
-          <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-slate-900 leading-none">{value}</h3>
+          // A word like "Unavailable" at the figure's size overflows the card, and
+          // shrinking it also stops it reading as a quantity.
+          <h3 className={clsx(
+            'font-bold text-slate-900 leading-none',
+            typeof value === 'string' && value.length > 3
+              ? 'text-sm sm:text-base lg:text-lg'
+              : 'text-xl sm:text-2xl lg:text-3xl',
+          )}>{value}</h3>
         )}
         {trend && (
           <span className={clsx(

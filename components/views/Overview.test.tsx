@@ -68,4 +68,27 @@ describe('Overview', () => {
       expect(toastError).toHaveBeenCalledWith('API Error');
     });
   });
+  it('says the figures are unavailable rather than showing zero', async () => {
+    // A failed load used to leave the tiles printing the em dash they use while loading,
+    // so six cards sat there apparently still working while the banner above them said
+    // the refresh had failed. 'Buses with GPS Offline: 0' is worse again — it is the
+    // reading that means every bus is accounted for.
+    (api.fetchStats as any).mockRejectedValue(new Error('Gateway timeout'));
+
+    render(<Overview />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Gateway timeout'));
+    expect(await screen.findAllByText('Unavailable')).toHaveLength(6);
+    expect(screen.queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('prints a successful zero as zero', async () => {
+    (api.fetchStats as any).mockResolvedValue({ offlineDevices: 0, totalBuses: 12 });
+
+    render(<Overview />);
+
+    await waitFor(() => expect(screen.getByText('12')).toBeInTheDocument());
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
+  });
 });

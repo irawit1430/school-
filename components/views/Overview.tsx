@@ -178,11 +178,23 @@ export function Overview() {
     });
   }), [routes, drivers]);
 
+  /**
+   * What to print on a tile.
+   *
+   * `—` means we are still loading. A failed first load has nothing cached, and printing
+   * `—` there left six cards looking like they were still working while the banner above
+   * them said the refresh had failed. `0` stays `0` — a successful zero is a real answer,
+   * and on this screen "0 buses with GPS offline" has to be distinguishable from "we do
+   * not know", because one of them means every bus is accounted for.
+   */
+  const figure = (value: number | undefined): number | string =>
+    value ?? (coreError ? 'Unavailable' : '—');
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-4 md:space-y-6 lg:space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Overview</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">Command Centre</h2>
           <p className="mt-0.5 text-xs text-slate-500">
             {lastUpdated
               ? `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
@@ -208,12 +220,43 @@ export function Overview() {
         </div>
       )}
 
-      {/* Metrics Row */}
+      {/* Metrics Row
+          Operational figures first, asset totals after. The order used to be Students,
+          Buses, Routes, then GPS — so the first three things an operator read at 07:30
+          were counts that had not changed since the school was set up, and the one number
+          that could mean a bus is missing sat fifth. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 md:gap-6">
+        <MetricCard
+          title="Buses with GPS Offline"
+          href="/map?filter=silent"
+          value={figure(stats?.offlineDevices)}
+          loading={loading}
+          icon={AlertTriangle}
+          color="warning"
+        />
+        <MetricCard
+          title="GPS Devices Online"
+          href="/map?filter=reporting"
+          value={figure(stats?.activeDevices)}
+          loading={loading}
+          icon={CheckCircle}
+          color="success"
+        />
+        <MetricCard
+          title="Pending Leaves"
+          href="/leaves"
+          // The pending list arrives in the same call, so its length stands in when the
+          // stats payload omits the count. `?? leaves.length` on its own would have printed
+          // 0 whenever the call failed, which on a queue of decisions is the wrong lie.
+          value={figure(stats ? (stats.pendingLeaves ?? leaves.length) : undefined)}
+          loading={loading}
+          icon={CalendarDays}
+          color="slate"
+        />
         <MetricCard
           title="Total Students"
           href="/students"
-          value={stats?.totalStudents ?? '—'}
+          value={figure(stats?.totalStudents)}
           loading={loading}
           icon={Users}
           color="primary"
@@ -221,7 +264,7 @@ export function Overview() {
         <MetricCard
           title="Total Buses"
           href="/buses"
-          value={stats?.totalBuses ?? '—'}
+          value={figure(stats?.totalBuses)}
           loading={loading}
           icon={Bus}
           color="primary"
@@ -229,34 +272,10 @@ export function Overview() {
         <MetricCard
           title="Total Routes"
           href="/routes"
-          value={stats?.totalRoutes ?? '—'}
+          value={figure(stats?.totalRoutes)}
           loading={loading}
           icon={Map}
           color="primary"
-        />
-        <MetricCard
-          title="GPS Devices Online"
-          href="/map?filter=reporting"
-          value={stats?.activeDevices ?? '—'}
-          loading={loading}
-          icon={CheckCircle}
-          color="success"
-        />
-        <MetricCard
-          title="Buses with GPS Offline"
-          href="/map?filter=silent"
-          value={stats?.offlineDevices ?? '—'}
-          loading={loading}
-          icon={AlertTriangle}
-          color="warning"
-        />
-        <MetricCard
-          title="Pending Leaves"
-          href="/leaves"
-          value={stats?.pendingLeaves ?? leaves.length ?? '—'}
-          loading={loading}
-          icon={CalendarDays}
-          color="slate"
         />
       </div>
 
