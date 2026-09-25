@@ -2,10 +2,10 @@
 /* eslint-disable react-hooks/set-state-in-effect */
  
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { fetchLeaves, approveLeave, rejectLeave, apiErrorMessage } from '@/lib/api';
 import { leaveDays, formatDay } from '@/lib/leaves';
-import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 
@@ -21,12 +21,43 @@ const StatusBadge = ({ status }: { status: string }) => {
   }
 };
 
+/**
+ * The leave queue is the longest list in the product in exam season and it rendered every
+ * row at once, with no way to find one child. An office clearing fifty requests scrolled
+ * for the name the parent had just phoned about. The API returns the whole list anyway, so
+ * search and paging happen here; no request changes.
+ */
+export const LEAVES_PAGE_SIZE = 25;
+
+const isPending = (leave: any) => (leave.status || 'PENDING').toUpperCase() === 'PENDING';
+
 export function LeaveRequests() {
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matched = q
+      ? leaves.filter(leave =>
+          `${leave.student?.name ?? ''} ${leave.student?.rfidTag ?? ''}`.toLowerCase().includes(q))
+      : leaves;
+    // Pending first, otherwise in the order the server sent. Under "All Requests" the
+    // decisions still owed used to be scattered among processed ones, which paging would
+    // have spread across several pages.
+    return [...matched].sort((a, b) => Number(isPending(b)) - Number(isPending(a)));
+  }, [leaves, query]);
+
+  const pageCount = Math.max(1, Math.ceil(visible.length / LEAVES_PAGE_SIZE));
+  // Clamped rather than reset: approving the last row on the last page shrinks the list,
+  // and the page should follow instead of showing an empty table.
+  const currentPage = Math.min(page, pageCount);
+  const firstIndex = (currentPage - 1) * LEAVES_PAGE_SIZE;
+  const pageRows = visible.slice(firstIndex, firstIndex + LEAVES_PAGE_SIZE);
 
   /**
    * A failed load used to catch with console.error and nothing else, so the table fell
@@ -80,13 +111,14 @@ export function LeaveRequests() {
   };
 
   const handleExportCSV = () => {
-    if (leaves.length === 0) return toast.error('No leaves to export');
+    if (visible.length === 0) return toast.error('No leaves to export');
     const headers = ['Student Name,Student ID,Start Date,End Date,Reason,Status'];
     const escape = (v: any) => {
       const s = String(v ?? '').replace(/"/g, '""');
       return `"${/^[=+\-@]/.test(s) ? `'${s}` : s}"`;
     };
-    const rows = leaves.map((leave: any) => {
+    // What is on screen after search and status filter, not the unfiltered list.
+    const rows = visible.map((leave: any) => {
       const studentName = leave.student?.name || 'Unknown';
       const rfid = leave.student?.rfidTag || 'N/A';
       const days = leaveDays(leave);
@@ -144,12 +176,12 @@ export function LeaveRequests() {
       )}
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+        <div className="p-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50">
           <div className="flex items-center gap-2">
             <Filter size={16} className="text-slate-400" />
             <select 
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               className="text-sm font-semibold border-none bg-transparent text-slate-700 focus:ring-0 cursor-pointer outline-none"
             >
               <option value="ALL">All Requests</option>
@@ -158,8 +190,19 @@ export function LeaveRequests() {
               <option value="REJECTED">Rejected</option>
             </select>
           </div>
+          <label className="relative flex-1 max-w-xs">
+            <span className="sr-only">Search by student name or ID</span>
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+              placeholder="Search student name or ID"
+              className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+            />
+          </label>
           <div className="text-xs font-semibold text-slate-500 flex items-center gap-2">
-            {loading ? <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div> Loading...</> : `${leaves.length} Applications`}
+            {loading ? <><div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div> Loading...</> : query.trim() ? `${visible.length} of ${leaves.length} Applications` : `${leaves.length} Applications`}
           </div>
         </div>
 
@@ -184,6 +227,16 @@ export function LeaveRequests() {
                     Loading leaves...
                   </td>
                 </tr>
+              ) : leaves.length > 0 && visible.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                    <Search size={28} className="mx-auto text-slate-300 mb-3" />
+                    <p className="font-medium text-slate-900">No student matches &ldquo;{query.trim()}&rdquo;</p>
+                    <button onClick={() => { setQuery(''); setPage(1); }} className="mt-2 text-xs font-semibold text-orange-700 underline">
+                      Clear search
+                    </button>
+                  </td>
+                </tr>
               ) : leaves.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
@@ -199,13 +252,13 @@ export function LeaveRequests() {
                   </td>
                 </tr>
               ) : (
-                leaves.map((leave) => {
+                pageRows.map((leave) => {
                   const studentName = leave.student?.name || 'Unknown Student';
                   const initials = studentName.substring(0, 2).toUpperCase();
                   const days = leaveDays(leave);
                   const startDate = formatDay(days.start);
                   const endDate = formatDay(days.end);
-                  const isPending = leave.status?.toUpperCase() === 'PENDING';
+                  const pending = isPending(leave);
                   
                   return (
                     <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
@@ -241,7 +294,7 @@ export function LeaveRequests() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
-                          {isPending ? (
+                          {pending ? (
                             <>
                               <button 
                                 onClick={() => handleApprove(leave.id)}
@@ -270,6 +323,31 @@ export function LeaveRequests() {
             </tbody>
           </table>
         </div>
+
+        {!loading && visible.length > LEAVES_PAGE_SIZE && (
+          <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>
+              Showing {firstIndex + 1}–{firstIndex + pageRows.length} of {visible.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <span aria-live="polite">Page {currentPage} of {pageCount}</span>
+              <button
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === pageCount}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { LeaveRequests } from './LeaveRequests';
+import { LeaveRequests, LEAVES_PAGE_SIZE } from './LeaveRequests';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import * as api from '@/lib/api';
@@ -238,5 +238,35 @@ describe('LeaveRequests', () => {
       expect(console.error).toHaveBeenCalledWith(error);
       expect(toastError).toHaveBeenCalledWith('Rejection Error');
     });
+  });
+  it('finds one child by name in a long queue, and pages the rest', async () => {
+    // Exam season: the queue is the longest list in the product and used to render whole.
+    const many = Array.from({ length: LEAVES_PAGE_SIZE + 5 }, (_, i) => ({
+      id: `l${i}`,
+      student: { name: `Student ${String(i).padStart(2, '0')}`, rfidTag: `R${i}` },
+      startDate: '2026-09-25T00:00:00.000Z',
+      endDate: '2026-09-25T00:00:00.000Z',
+      reason: 'Exam',
+      // The one pending request sits last in the payload; it must still lead page one.
+      status: i === LEAVES_PAGE_SIZE + 4 ? 'PENDING' : 'APPROVED',
+    }));
+    (api.fetchLeaves as any).mockResolvedValue(many);
+
+    render(<LeaveRequests />);
+
+    await screen.findByText(`Showing 1–${LEAVES_PAGE_SIZE} of ${many.length}`);
+    expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
+    expect(screen.getByText(`Student ${LEAVES_PAGE_SIZE + 4}`)).toBeInTheDocument(); // last in payload, first on screen
+    expect(screen.queryByText(`Student ${LEAVES_PAGE_SIZE - 1}`)).not.toBeInTheDocument(); // pushed to page 2
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Page 2 of 2')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'student 07' } });
+    expect(screen.getByText('Student 07')).toBeInTheDocument();
+    expect(screen.getByText(`1 of ${many.length} Applications`)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'nobody' } });
+    expect(screen.getByText(/No student matches/)).toBeInTheDocument();
   });
 });
