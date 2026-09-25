@@ -8,6 +8,7 @@ import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
 import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
 import { RecentLeavesWidget } from './overview/RecentLeavesWidget';
+import { SetupChecklist, setupSteps } from './overview/SetupChecklist';
 
 // --- TypeScript Interfaces add kiye gaye hain ---
 interface Student { name: string; }
@@ -27,6 +28,7 @@ interface RouteData {
   id: string;
   name: string;
   trips?: Trip[];
+  stops?: unknown[];
 }
 interface Driver {
   id: string;
@@ -56,6 +58,9 @@ export function Overview() {
   // outage must not hide the trips.
   const [coreError, setCoreError] = useState('');
   const [tripsError, setTripsError] = useState('');
+  // Routes arrive separately from the core call. Until they have, "no routes yet" is
+  // unknown rather than true, and the setup checklist must not claim it.
+  const [routesLoaded, setRoutesLoaded] = useState(false);
 
   /**
    * Reloaded on an interval and on focus, because this is the screen most likely left
@@ -76,6 +81,7 @@ export function Overview() {
       .then(([routesData, driversData]) => {
         setRoutes(Array.isArray(routesData) ? routesData : []);
         setDrivers(Array.isArray(driversData) ? driversData : []);
+        setRoutesLoaded(true);
         setTripsError('');
       })
       .catch(err => setTripsError(apiErrorMessage(err, 'Trips are unavailable.')));
@@ -218,6 +224,18 @@ export function Overview() {
           {lastUpdated && <p className="mt-1">Figures below are from {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.</p>}
           <button disabled={refreshing} onClick={() => void loadData()} className="mt-2 font-semibold underline disabled:opacity-50">Retry</button>
         </div>
+      )}
+
+      {/* Only when every source it reads has answered. A failed call reads as zero buses
+          or zero routes, and telling an established school to "add your buses" during an
+          outage is the same lie as printing 0 on a tile. */}
+      {!loading && routesLoaded && stats && !coreError && !tripsError && (
+        <SetupChecklist steps={setupSteps({
+          totalBuses: stats.totalBuses ?? buses.length,
+          totalStudents: stats.totalStudents,
+          drivers,
+          routes,
+        })} />
       )}
 
       {/* Metrics Row

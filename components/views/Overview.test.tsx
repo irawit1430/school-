@@ -91,4 +91,17 @@ describe('Overview', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
     expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
   });
+  it('walks a new school through setup, but never during an outage', async () => {
+    (api.fetchStats as any).mockResolvedValue({ totalBuses: 0, totalStudents: 0 });
+    const { unmount } = render(<Overview />);
+    expect(await screen.findByText('Finish setting up tracking')).toBeInTheDocument();
+    expect(screen.getByText('0 of 5 done')).toBeInTheDocument();
+    unmount();
+
+    // Stats failed: zero buses is unknown, not true, so no "add your buses".
+    (api.fetchStats as any).mockRejectedValue(new Error('Gateway timeout'));
+    render(<Overview />);
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Gateway timeout'));
+    expect(screen.queryByText('Finish setting up tracking')).not.toBeInTheDocument();
+  });
 });
