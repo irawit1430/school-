@@ -31,16 +31,6 @@ export function SupportSchoolGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setUser(getUser());
-    setSchool(getSupportSchool());
-    setReady(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, []);
-
-  const isSupport = ready && user?.role === 'SUPER_ADMIN' && !user?.schoolId;
-
   const load = () => {
     setLoading(true);
     setError('');
@@ -50,10 +40,21 @@ export function SupportSchoolGate({ children }: { children: React.ReactNode }) {
       .finally(() => setLoading(false));
   };
 
+  // One pass on mount: read who is signed in, read any school already chosen, and fetch
+  // the list only when a support session still has to choose. Nothing here reacts to a
+  // later render — both answers come from storage and neither changes without a reload.
   useEffect(() => {
-    if (isSupport && !school && schools === null && !loading && !error) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupport, school, schools]);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const signedIn = getUser();
+    const chosen = getSupportSchool();
+    setUser(signedIn);
+    setSchool(chosen);
+    setReady(true);
+    if (signedIn?.role === 'SUPER_ADMIN' && !signedIn?.schoolId && !chosen) load();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  const isSupport = ready && user?.role === 'SUPER_ADMIN' && !user?.schoolId;
 
   const choose = (next: SupportSchool) => {
     setSupportSchool(next);
