@@ -24,10 +24,13 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+
       - name: Unit tests
         run: npm test
 
       # Browser tests (npm run test:e2e) are not run here: they need Playwright's
-      # browsers installed. `npm run lint` is left out until its existing errors are fixed.
+      # browsers installed.
       - name: Build
         run: npm run build

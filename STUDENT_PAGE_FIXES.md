@@ -27,7 +27,7 @@ Also added status/grade/route filtering, Clear filters, sorting, page-size selec
 
 **Verification**
 
-- 55 focused Node/jsdom tests pass using `node node_modules/vitest/vitest.mjs run --config vitest.students.config.mts`.
+- 55 focused Node/jsdom tests pass using `npm test`.
 - Changed student code, API helper, and tests pass ESLint.
 - TypeScript checking passes. Production build and static export pass.
 - No browser testing, live API requests, dependency installation, or deployment was performed. Unrelated existing workspace changes were preserved.

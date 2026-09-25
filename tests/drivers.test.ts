@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { buildDriverUpdate, formatDeparture, getDriverTrips, matchesDriverSearch, toLocalDateTime } from '../lib/drivers';
 
 test('planned departures do not make a driver currently running', () => {

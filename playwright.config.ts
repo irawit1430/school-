@@ -3,6 +3,7 @@ export default defineConfig({
   testDir: './tests',
   // tests/ also holds vitest unit tests (*.test.ts[x]). Playwright must only collect
   // its own specs, or it tries to load vitest under CommonJS and aborts the whole run.
+  // Keep browser specs here and pure logic in *.test.ts, so CI's npm test covers it.
   testMatch: '**/*.spec.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

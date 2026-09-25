@@ -2,7 +2,7 @@
 
 The Drivers page uses the existing backend contracts. Test fixture records are fictitious and never sent to a backend.
 
-- Interaction tests: `node_modules/.bin/vitest run --config vitest.drivers.config.mts`
+- Interaction tests: `npm test`
 - Helper regressions: `node_modules/.bin/playwright test tests/drivers.spec.ts --config playwright.unit.config.ts`
 - Browser preview: `node_modules/.bin/vite --config vite.drivers-preview.config.mts`, then open `http://127.0.0.1:4173/tests/fixtures/drivers-preview.html`.
 

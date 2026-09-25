@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { cachedGet, clearApiCache, CACHE_TTL_MS, __setClock } from '../lib/apiCache';
 
 // This cache decides whether the dashboard shows fresh data. Getting it wrong is silent

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { subscribeToBusPositions, mergeBusPosition } from '../lib/liveBuses';
 
 // A fake socket that just records handlers and lets a test fire packets.

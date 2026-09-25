@@ -13,8 +13,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
-    // tests/*.spec.ts belong to Playwright (see playwright.config.ts). Without this,
-    // vitest collects them, fails on the @playwright/test import, and the run is red.
+    // tests/*.spec.ts belong to Playwright (see playwright.config.ts). Only browser
+    // specs live there now — the nine pure-logic files that used to import
+    // @playwright/test are ordinary *.test.ts, because npm run test:e2e needs browsers
+    // and so CI never ran them: 51 unit tests were checking nothing on every push.
     //
     // ponytail/ is a vendored plugin that ships its own node:test suite. Vitest collected
     // its 20 files, reported every one as "No test suite found", and pushed the run's

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { getBusDisplayName, getBusOperationalStatus } from '../lib/buses';
 
 test('uses a friendly fleet label before the registration number', () => {

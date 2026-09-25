@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import QRCode from 'qrcode';
 
 // The cards are printed at 42mm and laminated, so a change to the error-correction

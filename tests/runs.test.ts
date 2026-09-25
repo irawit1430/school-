@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { describeDays, validateRun, selectedDays, toRunPayload, previewDatesFor, describeClosureImpact, datesBetween, isPlatformClosure } from '../lib/runs';
 
 const base = {

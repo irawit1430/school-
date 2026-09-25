@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { isSpeeding, ALERT_ENTER_KMH, ALERT_EXIT_KMH } from '../lib/liveBuses';
 
 test('a bus sitting on the limit does not flicker between alert and normal', () => {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from 'vitest';
 import { ACTIVE_TRIP_STATUSES, isActiveTrip, activeTripsSoonestFirst, describeTrip, nextDepartureAt, routeHasMatchingTrip, findDriverClashes } from '../lib/trips';
 
 // These guard the two defects that kept recurring across the platform: a DELAYED trip
