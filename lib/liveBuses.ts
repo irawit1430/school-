@@ -48,21 +48,57 @@ export function subscribeToBusPositions(
   };
 }
 
+// ─── Where a position came from, and when ───────────────────────────────────
+//
+// Three different clocks were being treated as one: the moment the tracker measured the
+// fix, the moment this browser received the packet, and `new Date()` at merge time. The
+// last of those was filling in for the first, so a packet carrying no fix time at all
+// produced a bus that read as perfectly live. The screen was reporting a freshness it had
+// invented, on the one number an operator has to be able to trust.
+
+/** The device's own fix time in ms, or null when the packet carried none. */
+const observedAt = (log: any): number | null => {
+  const at = Date.parse(log?.timestamp ?? '');
+  return Number.isFinite(at) ? at : null;
+};
+
+/** When this browser received the packet, in ms, or null. */
+const receivedAt = (log: any): number | null => {
+  const at = Date.parse(log?.receivedAt ?? '');
+  return Number.isFinite(at) ? at : null;
+};
+
 /**
  * Merge one telemetry packet into a bus row.
  *
- * Returns the original object when nothing moved, so React can skip re-rendering that
- * bus. The telemetry paths disagree on shape — the TCP one real hardware uses carries
- * position only — so every non-position field falls back to what we already had rather
- * than being blanked by its absence.
+ * The telemetry paths disagree on shape — the TCP one real hardware uses carries position
+ * only — so every non-position field falls back to what we already had rather than being
+ * blanked by its absence.
+ *
+ * Two rules decide whether the packet is applied at all, and both exist because the old
+ * code compared coordinates instead of times:
+ *
+ * A bus parked at a stop reports the same coordinates every few seconds. Returning the
+ * held row unchanged kept its old timestamp, so its age went on climbing while it was
+ * reporting perfectly — after ten minutes the screen called it "Not reporting". That is
+ * the single worst thing this file can get wrong: children board at stops, so the moment a
+ * bus most deserves attention is the moment it stops moving, and the alarm that fires then
+ * was a false one. A valid packet advances freshness whether or not the bus moved.
+ *
+ * Going the other way, retransmits and multi-gateway delivery mean packets arrive late. An
+ * older observation overwriting a newer one drags a marker backwards and resets its age.
+ * So a fix at or before the one we hold is dropped; equal timestamps keep the existing
+ * row, which also collapses duplicate deliveries into one.
  */
 export function mergeBusPosition(bus: any, data: any): any {
-  const lat = data.lat ?? bus.gpsLogs?.[0]?.lat;
-  const lng = data.lng ?? bus.gpsLogs?.[0]?.lng;
-  const speed = data.speed ?? 0;
   const prev = bus.gpsLogs?.[0];
+  const incoming = observedAt(data);
+  const held = observedAt(prev);
+  if (incoming !== null && held !== null && incoming <= held) return bus;
 
-  if (prev && prev.lat === lat && prev.lng === lng && prev.speed === speed) return bus;
+  const lat = data.lat ?? prev?.lat;
+  const lng = data.lng ?? prev?.lng;
+  const speed = data.speed ?? 0;
 
   return {
     ...bus,
@@ -73,8 +109,42 @@ export function mergeBusPosition(bus: any, data: any): any {
     driverName: data.driverName || bus.driverName,
     routeName: data.routeName || bus.routeName,
     status: data.status || bus.status,
-    gpsLogs: [{ lat, lng, speed, timestamp: data.timestamp || new Date().toISOString() }],
+    gpsLogs: [{
+      lat,
+      lng,
+      speed,
+      // Only the device's own time goes in `timestamp`. No fix time is a fact worth
+      // showing, and `describeFreshness` says so rather than papering over it.
+      timestamp: data.timestamp ?? null,
+      receivedAt: new Date().toISOString(),
+    }],
   };
+}
+
+/**
+ * Fold a REST fleet payload into what is already on screen.
+ *
+ * Refresh called `setBuses(payload)` outright, which threw away every socket position and
+ * reverted each marker to whatever the REST row's `gpsLogs` happened to hold — usually
+ * minutes old. The button an operator presses when a bus looks wrong was the button that
+ * made the map less current, and the regression healed itself within a second as packets
+ * resumed, which is why it survived: you had to be watching at the moment you pressed it.
+ *
+ * REST wins on identity — registration, route, driver, capacity, status — because that is
+ * where those are edited. The position keeps whichever observation is newer.
+ */
+export function reconcileFleet(held: any[], incoming: any[]): any[] {
+  const byId = new Map(held.map(bus => [bus.id, bus]));
+  return incoming.map(bus => {
+    const mine = byId.get(bus.id);
+    if (!mine) return bus;
+    const ours = observedAt(mine.gpsLogs?.[0]);
+    const theirs = observedAt(bus.gpsLogs?.[0]);
+    const keepOurs = ours !== null && (theirs === null || ours > theirs);
+    return keepOurs
+      ? { ...bus, gpsLogs: mine.gpsLogs, speeding: mine.speeding }
+      : bus;
+  });
 }
 
 /**
@@ -143,6 +213,34 @@ export const describeFixAge = (bus: any, now: number = Date.now()): string | nul
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${String(minutes % 60).padStart(2, '0')}m ago`;
 };
+
+/**
+ * What we can honestly say about this position's age.
+ *
+ * `describeFixAge` returns null when the packet carried no fix time, and every caller
+ * rendered that as nothing at all — a bus with no time provenance looked exactly like one
+ * whose age simply was not worth showing. There are three different situations here and
+ * they want three different sentences:
+ *
+ *   - the tracker told us when it measured the fix → its age
+ *   - it did not, but we know when the packet reached us → that, labelled as receipt
+ *   - neither → say the freshness is unknown, and do not imply the bus is fine
+ */
+export const describeFreshness = (bus: any, now: number = Date.now()): string => {
+  const age = describeFixAge(bus, now);
+  if (age !== null) return age;
+  const got = receivedAt(bus?.gpsLogs?.[0]);
+  if (got === null) return 'Freshness unknown';
+  return `Received ${new Date(got).toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', timeZone: SCHOOL_TIMEZONE,
+  })} · no fix time`;
+};
+
+/**
+ * The Bihar pilot runs on IST, and a trip's service date is a school-local fact. Browser
+ * time is display metadata, never the basis for a date or a direction.
+ */
+export const SCHOOL_TIMEZONE = 'Asia/Kolkata';
 
 /**
  * Who is driving this bus right now.

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseStudentImportCSV, STUDENT_IMPORT_TEMPLATE } from '../lib/studentImport';
-import { clearApiCache, clearSchoolIdCache, fetchStats, importStudentsCSV } from '../lib/api';
+import { clearApiCache, fetchStats, importStudentsCSV } from '../lib/api';
 
 const header = 'name,rollNumber,guardianName,guardianPhone';
 
@@ -112,14 +112,14 @@ describe('student CSV import validation', () => {
 
 describe('student import API boundary and optional stats failures', () => {
   beforeEach(() => {
-    clearApiCache(); clearSchoolIdCache();
+    clearApiCache();
     vi.stubGlobal('window', {});
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'voltava_user' ? JSON.stringify({ schoolId: 'school-test' }) : null });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
-  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); clearApiCache(); clearSchoolIdCache(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); clearApiCache(); });
 
   it('submits exactly the validated four-field payload', async () => {
     const file = new File([header + ',grade\n"Patel, Asha",0007,Parent,+919876543210,4'], 'students.csv');

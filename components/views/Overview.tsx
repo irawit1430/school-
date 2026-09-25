@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
-import { subscribeToBusPositions, mergeBusPosition } from '@/lib/liveBuses';
+import { subscribeToBusPositions, mergeBusPosition, reconcileFleet } from '@/lib/liveBuses';
 import { leaveDays, formatDay, type LeaveDates } from '@/lib/leaves';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, RefreshCw } from 'lucide-react';
 import { MetricCard } from './overview/MetricCard';
@@ -86,7 +86,9 @@ export function Overview() {
         fetchLeaves('pending'),
         fetchStats(),
       ]);
-      setBuses(Array.isArray(busesData) ? busesData : []);
+      // This polls every 60s and again on every window focus, so assigning the payload
+      // outright meant the markers lost their live positions once a minute.
+      setBuses(prev => reconcileFleet(prev, Array.isArray(busesData) ? busesData : []));
       setLeaves(Array.isArray(leavesData) ? leavesData : []);
       setStats(statsData);
       setCoreError('');

@@ -9,7 +9,8 @@ import {
 import polyline from '@mapbox/polyline';
 import { getBusDisplayName } from '@/lib/buses';
 import {
-  subscribeToBusPositions, mergeBusPosition, trackerState, isMoving, describeFixAge,
+  subscribeToBusPositions, mergeBusPosition, reconcileFleet, trackerState, isMoving,
+  describeFixAge, describeFreshness,
   resolveBusDriver, resolveBusTrip, busPosition, metresFromPath, isOffRoute,
   OFF_ROUTE_METRES, ALERT_ENTER_KMH, type TrackerState,
 } from '@/lib/liveBuses';
@@ -79,7 +80,9 @@ export function LiveFleetMap() {
     setLoading(true);
     Promise.all([fetchBuses(), fetchDrivers()])
       .then(([busesData, driversData]) => {
-        setBuses(Array.isArray(busesData) ? busesData : []);
+        // Folded in, not assigned: a plain assignment threw away every socket position
+        // and snapped each marker back to the REST row's minutes-old fix.
+        setBuses(prev => reconcileFleet(prev, Array.isArray(busesData) ? busesData : []));
         setDrivers(Array.isArray(driversData) ? driversData : []);
         setLoadError('');
       })
@@ -400,7 +403,7 @@ export function LiveFleetMap() {
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Last fix</span>
                 <span className={clsx('font-bold text-sm', selectedTracker === 'silent' ? 'text-red-400' : selectedTracker === 'stale' ? 'text-amber-300' : 'text-emerald-400')}>
-                  {describeFixAge(selectedBus, now) ?? 'Awaiting'}
+                  {describeFreshness(selectedBus, now)}
                 </span>
               </div>
               <div>
@@ -611,7 +614,7 @@ export function LiveFleetMap() {
               const isAlert = Boolean(bus.speeding);
               const tracker = trackerState(bus, now);
               const moving = isMoving(bus);
-              const fixAge = describeFixAge(bus, now);
+              const fixAge = describeFreshness(bus, now);
               const isSelected = selectedBusId === bus.id;
               // One resolution path, shared with the focus HUD above the map.
               const driver = resolveBusDriver(bus, driverByBus[bus.id], drivers);
@@ -702,7 +705,7 @@ export function LiveFleetMap() {
                           "ml-1.5 font-medium",
                           tracker === 'silent' ? 'text-red-600' : tracker === 'stale' ? 'text-amber-600' : 'text-slate-400',
                         )}>
-                          · {fixAge ?? 'no fix yet'}
+                          · {fixAge}
                         </span>
                       </p>
                     </div>

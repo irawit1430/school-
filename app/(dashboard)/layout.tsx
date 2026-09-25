@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { EmergencyAlertBanner } from '@/components/layout/EmergencyAlertBanner';
 import { SessionExpiryNotice } from '@/components/layout/SessionExpiryNotice';
+import { SupportSchoolGate } from '@/components/layout/SupportSchoolGate';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Toaster } from 'react-hot-toast';
 import { getToken } from '@/lib/api';
@@ -64,6 +65,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
+    <SupportSchoolGate>
     <div className="flex min-h-screen bg-slate-50 relative">
       <Toaster position="top-right" />
       <EmergencyAlertBanner />
@@ -76,5 +78,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+    </SupportSchoolGate>
   );
 }

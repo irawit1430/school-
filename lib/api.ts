@@ -70,8 +70,9 @@ export const clearAuth = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');
     localStorage.removeItem(CONFIG.USER_STORAGE_KEY);
+    // A support session must not survive into the next sign-in.
+    localStorage.removeItem(SUPPORT_SCHOOL_KEY);
   }
-  clearSchoolIdCache();
   clearApiCache();
 };
 
@@ -199,12 +200,50 @@ async function api<T = any>(
 // identical lookups before any of its real requests left. Cached for the session, and
 // the in-flight promise is shared so a burst of parallel callers makes one request,
 // not five. Cleared on logout, since the next user may belong elsewhere.
-let schoolIdCache: string | null = null;
-let schoolIdInFlight: Promise<string | null> | null = null;
+/**
+ * Which school a Voltava support session is looking at.
+ *
+ * A SUPER_ADMIN has no `schoolId` of their own, and this used to resolve by taking
+ * `schools[0].id` — whichever school the API happened to list first. Nothing on screen
+ * said which school that was, and every write went to it: students created, routes
+ * edited, alerts resolved, against a school nobody chose. Reordering the server's
+ * response would have silently moved a support session to a different school's children.
+ *
+ * So the choice is explicit and stored. `getSchoolId` returns null until one is made,
+ * which the dashboard layout turns into a school picker rather than an error.
+ *
+ * Not done here, because neither can be honestly enforced in this app: read-only default
+ * and audited elevation. The server is the only place that can refuse a support write,
+ * and the banner says what scope is in effect rather than pretending to enforce it.
+ */
+const SUPPORT_SCHOOL_KEY = 'voltava.supportSchool';
 
-export const clearSchoolIdCache = () => {
-  schoolIdCache = null;
-  schoolIdInFlight = null;
+export type SupportSchool = { id: string; name: string };
+
+export const getSupportSchool = (): SupportSchool | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SUPPORT_SCHOOL_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.id ? parsed : null;
+  } catch { return null; }
+};
+
+export const setSupportSchool = (school: SupportSchool | null) => {
+  if (typeof window === 'undefined') return;
+  if (school) localStorage.setItem(SUPPORT_SCHOOL_KEY, JSON.stringify(school));
+  else localStorage.removeItem(SUPPORT_SCHOOL_KEY);
+  // Leaving or switching school clears everything scoped to the old one, or the next
+  // screen renders the previous school's buses under the new school's name.
+  clearApiCache();
+};
+
+export const fetchSchools = async (): Promise<SupportSchool[]> => {
+  const data = await api<any>('/schools');
+  const rows = Array.isArray(data) ? data : (data?.data ?? []);
+  return rows
+    .filter((row: any) => row?.id)
+    .map((row: any) => ({ id: row.id, name: row.name || row.schoolName || row.id }));
 };
 
 export const getSchoolId = async (): Promise<string | null> => {
@@ -212,30 +251,7 @@ export const getSchoolId = async (): Promise<string | null> => {
   if (!user) return null;
 
   if (user.schoolId) return user.schoolId;
-  if (schoolIdCache) return schoolIdCache;
-
-  // SUPER_ADMIN fallback — fetch first school
-  if (user.role === 'SUPER_ADMIN') {
-    if (!schoolIdInFlight) {
-      schoolIdInFlight = (async () => {
-        try {
-          const responseData = await api<any>('/schools');
-          const schools = Array.isArray(responseData) ? responseData : responseData.data;
-          if (schools && schools.length > 0) {
-            schoolIdCache = schools[0].id;
-            return schoolIdCache;
-          }
-          return null;
-        } catch {
-          return null;
-        } finally {
-          schoolIdInFlight = null;
-        }
-      })();
-    }
-    return schoolIdInFlight;
-  }
-
+  if (user.role === 'SUPER_ADMIN') return getSupportSchool()?.id ?? null;
   return null;
 };
 

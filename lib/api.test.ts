@@ -6,12 +6,12 @@ import {
   createStudent,
   API_BASE,
   clearApiCache,
-  clearSchoolIdCache,
   updatePassword,
   resetParentPassword,
   approvePasswordReset,
   rejectPasswordReset,
   fetchPasswordResetRequests,
+  setSupportSchool,
 } from './api';
 import { CONFIG } from './config';
 
@@ -70,10 +70,8 @@ const authedGet = {
 beforeEach(() => {
   localStorageMock.clear();
   vi.mocked(global.fetch).mockReset();
-  // GETs are cached for 30s and the SUPER_ADMIN school lookup for the session; without
-  // clearing both, one test's response is served to the next.
+  // GETs are cached for 30s; without clearing, one test's response is served to the next.
   clearApiCache();
-  clearSchoolIdCache();
 });
 
 describe('fetchBuses', () => {
@@ -111,25 +109,27 @@ describe('fetchBuses', () => {
     await expect(fetchBuses()).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
   });
 
-  it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
-    // Setup
+  it('asks a SUPER_ADMIN which school instead of picking one', async () => {
+    // This used to resolve to schools[0].id — whichever school the API listed first — and
+    // then read and write that school's records with nothing on screen naming it. There is
+    // no school until a support user chooses one, and the dashboard layout shows a picker.
     setUser({ role: 'SUPER_ADMIN' });
 
-    // First fetch for school ID
-    vi.mocked(global.fetch).mockResolvedValueOnce(ok([{ id: 'super-school-1' }]));
+    await expect(fetchBuses()).rejects.toThrow(/school/i);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 
-    // Second fetch for buses
+  it('uses the school a support session explicitly chose', async () => {
+    setUser({ role: 'SUPER_ADMIN' });
+    setSupportSchool({ id: 'chosen-school', name: 'Chosen School' });
+
     const mockBuses = [{ id: 'bus-2', name: 'Bus 2' }];
     vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockBuses));
 
-    // Execute
-    const result = await fetchBuses();
-
-    // Assert
-    expect(result).toEqual(mockBuses);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
-    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/buses`, expect.any(Object));
+    expect(await fetchBuses()).toEqual(mockBuses);
+    // One request, not two: the school no longer costs a /schools round trip per call.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools/chosen-school/buses`, expect.any(Object));
   });
 });
 
@@ -168,25 +168,27 @@ describe('fetchRoutes', () => {
     await expect(fetchRoutes()).rejects.toMatchObject({ name: 'ApiError', status: 500, message: 'HTTP 500' });
   });
 
-  it('should fetch schoolId from API if SUPER_ADMIN and no schoolId in user', async () => {
-    // Setup
+  it('asks a SUPER_ADMIN which school instead of picking one', async () => {
+    // This used to resolve to schools[0].id — whichever school the API listed first — and
+    // then read and write that school's records with nothing on screen naming it. There is
+    // no school until a support user chooses one, and the dashboard layout shows a picker.
     setUser({ role: 'SUPER_ADMIN' });
 
-    // First fetch for school ID
-    vi.mocked(global.fetch).mockResolvedValueOnce(ok([{ id: 'super-school-1' }]));
+    await expect(fetchRoutes()).rejects.toThrow(/school/i);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 
-    // Second fetch for routes
+  it('uses the school a support session explicitly chose', async () => {
+    setUser({ role: 'SUPER_ADMIN' });
+    setSupportSchool({ id: 'chosen-school', name: 'Chosen School' });
+
     const mockRoutes = [{ id: 'route-2', name: 'Route 2' }];
     vi.mocked(global.fetch).mockResolvedValueOnce(ok(mockRoutes));
 
-    // Execute
-    const result = await fetchRoutes();
-
-    // Assert
-    expect(result).toEqual(mockRoutes);
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools`, expect.any(Object));
-    expect(global.fetch).toHaveBeenNthCalledWith(2, `${API_BASE}/schools/super-school-1/routes`, expect.any(Object));
+    expect(await fetchRoutes()).toEqual(mockRoutes);
+    // One request, not two: the school no longer costs a /schools round trip per call.
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenNthCalledWith(1, `${API_BASE}/schools/chosen-school/routes`, expect.any(Object));
   });
 });
 
