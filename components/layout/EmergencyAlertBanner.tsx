@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { clsx } from 'clsx';
-import { connectSocket, getUser, fetchNotifications, resolveAlert, apiErrorMessage } from '@/lib/api';
+import { connectSocket, getUser, getSupportSchool, fetchNotifications, resolveAlert, apiErrorMessage } from '@/lib/api';
 import {
   isActiveEmergency, mergeNotification, normalizeNotification, notificationSeverity,
   type AppNotification,
@@ -29,7 +29,18 @@ export function EmergencyAlertBanner() {
     fetchNotifications()
       .then((rows: unknown) => {
         if (!Array.isArray(rows)) return;
-        setAlerts(rows.map(row => normalizeNotification(row)).filter(isActiveEmergency));
+        const server = rows.map(row => normalizeNotification(row)).filter(isActiveEmergency);
+        // A socket SOS can arrive before its row is readable. Replacing the list outright
+        // dropped it from the screen until the row appeared — an emergency vanishing for
+        // up to a minute. Keep the socket copy until the server shows one like it.
+        // ponytail: matched by type and time because the socket payload's id is not
+        // confirmed; match by id once the server guarantees one on emergency_alert.
+        setAlerts(prev => [
+          ...server,
+          ...prev.filter(local => !local.persisted && !server.some(row =>
+            row.type === local.type
+            && Math.abs(Date.parse(row.createdAt) - Date.parse(local.createdAt)) < 5 * 60_000)),
+        ]);
       })
       // A failed poll must not clear the banner: an emergency vanishing because a request
       // timed out is the exact failure this rewrite exists to remove.
@@ -45,13 +56,19 @@ export function EmergencyAlertBanner() {
 
     const socket = connectSocket();
     socket.on('emergency_alert', (alert: any) => {
-      if (alert?.schoolId && alert.schoolId !== user.schoolId && user.role !== 'SUPER_ADMIN') return;
+      // The socket event may arrive before the row is readable; reconcile shortly after
+      // so the id we hold is the one the resolve endpoint expects. Scheduled for every
+      // event, including ones not shown below: the REST list is school-scoped by the
+      // server, so this school's SOS still arrives from there within seconds.
+      setTimeout(load, 3_000);
+      // Only an alert that names this school goes on screen straight from the socket. A
+      // support session used to take every school's, under a band naming one of them —
+      // and "Mark handled" there would have closed another school's emergency.
+      const schoolId = user.schoolId ?? getSupportSchool()?.id;
+      if (!alert?.schoolId || alert.schoolId !== schoolId) return;
       const incoming = normalizeNotification(alert, 'emergency');
       setAlerts(prev => mergeNotification(prev, incoming).filter(isActiveEmergency));
       setCollapsed(false);
-      // The socket event may arrive before the row is readable; reconcile shortly after
-      // so the id we hold is the one the resolve endpoint expects.
-      setTimeout(load, 3_000);
     });
 
     return () => {
@@ -61,7 +78,7 @@ export function EmergencyAlertBanner() {
   }, [load]);
 
   const resolve = async (alert: AppNotification) => {
-    if (resolving) return;
+    if (resolving || !alert.persisted) return;
     setResolving(alert.id);
     try {
       await resolveAlert(alert.id);
@@ -85,7 +102,7 @@ export function EmergencyAlertBanner() {
           onClick={() => setCollapsed(false)}
           className={clsx(
             'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-2xl border-2',
-            critical ? 'bg-rose-600 border-rose-400 animate-pulse' : 'bg-orange-600 border-orange-400',
+            critical ? 'bg-rose-600 border-rose-400 motion-safe:animate-pulse' : 'bg-orange-600 border-orange-400',
           )}
         >
           <AlertTriangle size={16} />
@@ -110,7 +127,7 @@ export function EmergencyAlertBanner() {
               isCritical ? 'bg-rose-600 border-rose-400' : 'bg-orange-600 border-orange-400',
             )}
           >
-            <div className={clsx('shrink-0 rounded-lg p-2', isCritical ? 'bg-rose-500/50 animate-pulse' : 'bg-orange-500/50')}>
+            <div className={clsx('shrink-0 rounded-lg p-2', isCritical ? 'bg-rose-500/50 motion-safe:animate-pulse' : 'bg-orange-500/50')}>
               <AlertTriangle size={24} className="text-white" />
             </div>
             <div className="min-w-0 flex-1">
@@ -135,10 +152,11 @@ export function EmergencyAlertBanner() {
                   it are different acts, and only one of them should leave a record. */}
               <button
                 onClick={() => void resolve(alert)}
-                disabled={busy}
-                className="flex items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25 disabled:opacity-60"
+                disabled={busy || !alert.persisted}
+                title={alert.persisted ? undefined : 'Waiting for the server record of this alert before it can be closed'}
+                className="flex min-h-11 items-center gap-1.5 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold hover:bg-white/25 disabled:opacity-60"
               >
-                <Check size={14} /> {busy ? 'Saving…' : 'Mark handled'}
+                <Check size={14} /> {busy ? 'Saving…' : alert.persisted ? 'Mark handled' : 'Syncing…'}
               </button>
               <button
                 onClick={() => setCollapsed(true)}

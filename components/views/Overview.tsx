@@ -3,12 +3,15 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { fetchBuses, fetchLeaves, fetchStats, approveLeave, rejectLeave, fetchRoutes, fetchDrivers, connectSocket, apiErrorMessage } from '@/lib/api';
 import { subscribeToBusPositions, mergeBusPosition, reconcileFleet } from '@/lib/liveBuses';
 import { leaveDays, formatDay, type LeaveDates } from '@/lib/leaves';
+import { activeTripsSoonestFirst } from '@/lib/trips';
+import { SCHOOL_TIMEZONE } from '@/lib/liveBuses';
 import { Bus, Map, AlertTriangle, Users, CalendarDays, CheckCircle, RefreshCw } from 'lucide-react';
 import { MetricCard } from './overview/MetricCard';
 import { LiveMapWidget } from './overview/LiveMapWidget';
 import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
 import { RecentLeavesWidget } from './overview/RecentLeavesWidget';
 import { SetupChecklist, setupSteps } from './overview/SetupChecklist';
+import { NeedsAttention, needsAttention } from './overview/NeedsAttention';
 
 // --- TypeScript Interfaces add kiye gaye hain ---
 interface Student { name: string; }
@@ -21,6 +24,8 @@ interface Trip {
   id: string;
   status: string;
   driverId: string;
+  busId?: string | null;
+  scheduledStart?: string | null;
   progressPercent?: number;
   currentEtaMessage?: string;
 }
@@ -33,6 +38,7 @@ interface RouteData {
 interface Driver {
   id: string;
   name: string;
+  phone?: string | null;
 }
 interface Stats {
   totalStudents?: number;
@@ -44,6 +50,9 @@ interface Stats {
 }
 
 import toast from 'react-hot-toast';
+
+const formatDeparture = (iso: string) =>
+  new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: SCHOOL_TIMEZONE });
 
 export function Overview() {
   const [buses, setBuses] = useState<any[]>([]); // Add Bus interface later if needed
@@ -170,19 +179,29 @@ export function Overview() {
       rawId: leave.id
     })), [leaves]);
 
-  const activeTripsList = useMemo(() => routes.flatMap(r => {
-    return (r.trips || []).filter((t: Trip) => t.status !== 'COMPLETED' && t.status !== 'CANCELLED').map((t: Trip) => {
+  // Was "anything not COMPLETED or CANCELLED", which counted every PLANNED trip — and any
+  // status this code has never heard of — as live, with a green "0% Done" badge. A trip
+  // that has not left looked exactly like one on schedule. Planned trips are listed, and
+  // say so; only ON_SCHEDULE and DELAYED count as running.
+  const activeTripsList = useMemo(() => routes.flatMap(r =>
+    activeTripsSoonestFirst(r.trips).map((t: Trip) => {
       const assignedDriver = drivers.find(d => d.id === t.driverId);
+      const planned = t.status === 'PLANNED';
       return {
         id: t.id,
         name: r.name,
         driver: assignedDriver?.name || 'Unassigned',
         progress: t.progressPercent || 0,
-        type: t.status === 'DELAYED' ? 'warning' : 'good',
-        eta: t.currentEtaMessage || (t.status === 'DELAYED' ? 'Delayed' : 'On Schedule')
+        type: planned ? 'planned' : t.status === 'DELAYED' ? 'warning' : 'good',
+        eta: planned
+          ? (t.scheduledStart ? `Planned · departs ${formatDeparture(t.scheduledStart)}` : 'Planned · not started')
+          : t.currentEtaMessage || (t.status === 'DELAYED' ? 'Delayed' : 'On Schedule'),
       };
-    });
-  }), [routes, drivers]);
+    })), [routes, drivers]);
+
+  // Recomputed on every render — the 60s refresh and each socket fix — so a bus crossing
+  // the not-reporting threshold appears within a minute.
+  const attention = needsAttention({ routes, buses, drivers });
 
   /**
    * What to print on a tile.
@@ -236,6 +255,12 @@ export function Overview() {
           drivers,
           routes,
         })} />
+      )}
+
+      {/* Before the tiles: on a phone this is the first thing read (spec §7.1 mobile order).
+          Held back until trips have answered once, so it never flashes an all-clear. */}
+      {(routesLoaded || tripsError) && (
+        <NeedsAttention items={attention} error={tripsError} />
       )}
 
       {/* Metrics Row

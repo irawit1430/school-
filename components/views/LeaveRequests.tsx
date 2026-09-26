@@ -8,6 +8,7 @@ import { leaveDays, formatDay } from '@/lib/leaves';
 import { CheckCircle, XCircle, Clock, Filter, Download, Calendar, FileText, Search } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
+import { confirmChildDataExport } from '@/lib/utils';
 
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -112,6 +113,7 @@ export function LeaveRequests() {
 
   const handleExportCSV = () => {
     if (visible.length === 0) return toast.error('No leaves to export');
+    if (!confirmChildDataExport(visible.length)) return;
     const headers = ['Student Name,Student ID,Start Date,End Date,Reason,Status'];
     const escape = (v: any) => {
       const s = String(v ?? '').replace(/"/g, '""');

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
+import { confirmChildDataExport } from '@/lib/utils';
 import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop } from '@/lib/api';
 import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
 import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
@@ -330,7 +331,7 @@ export function StudentsAttendance() {
   };
   const exportCSV = (scope: 'all' | 'filtered') => {
     const rows = scope === 'all' ? students : filteredStudents;
-    if (!rows.length) return;
+    if (!rows.length || !confirmChildDataExport(rows.length)) return;
     const cell = (value: unknown) => {
       let text = String(value ?? '');
       if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r]/.test(text)) text = "'" + text;

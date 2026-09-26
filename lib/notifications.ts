@@ -8,6 +8,11 @@ export interface AppNotification {
   status?: string;
   kind?: 'ordinary' | 'emergency';
   metadata?: Record<string, any>;
+  /**
+   * False when the payload carried no server id and `id` was made up here to key the row.
+   * Such an id can render an alert but can never be sent to resolve one (spec §9).
+   */
+  persisted: boolean;
 }
 
 const EMERGENCY_TYPES = new Set(['DRIVER_SOS', 'HARDWARE_SOS', 'SOS', 'DELAY']);
@@ -35,7 +40,8 @@ export const normalizeNotification = (
   const type = String(raw?.type || 'SYSTEM').toUpperCase();
   const createdAt = raw?.createdAt || raw?.created_at || raw?.timestamp || new Date().toISOString();
   const message = raw?.message || raw?.body || raw?.content || '';
-  const id = String(raw?.id || raw?._id || raw?.notificationId || `${type}:${createdAt}:${message}`);
+  const serverId = raw?.id || raw?._id || raw?.notificationId;
+  const id = String(serverId || `${type}:${createdAt}:${message}`);
 
   return {
     ...raw,
@@ -52,6 +58,7 @@ export const normalizeNotification = (
     status: raw?.status ? String(raw.status).toUpperCase() : undefined,
     kind,
     metadata: raw?.metadata || {},
+    persisted: Boolean(serverId),
   };
 };
 

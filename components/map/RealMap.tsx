@@ -15,6 +15,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: '/leaflet/marker-shadow.png',
 });
 import { CONFIG } from '@/lib/config';
+import { trackerState, describeFreshness, type TrackerState } from '@/lib/liveBuses';
 import { clsx } from 'clsx';
 
 // Marker HTML used to be built with react-dom/server's renderToString, which shipped
@@ -32,6 +33,20 @@ const BUS_SVG = SVG_OPEN +
 const ALERT_SVG = SVG_OPEN +
   '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/>' +
   '<path d="M12 9v4"/><path d="M12 17h.01"/></svg>';
+
+const MARKER_BG: Record<TrackerState, string> = {
+  live: 'bg-emerald-500',
+  stale: 'bg-amber-500',
+  silent: 'bg-red-600',
+  unknown: 'bg-slate-400',
+};
+
+const STATE_LABEL: Record<TrackerState, [string, string]> = {
+  live: ['Reporting', 'bg-emerald-100 text-emerald-700'],
+  stale: ['Delayed fix', 'bg-amber-100 text-amber-700'],
+  silent: ['Not reporting', 'bg-red-100 text-red-700'],
+  unknown: ['Awaiting fix', 'bg-slate-100 text-slate-600'],
+};
 
 // Bus names come from user data and go straight into marker HTML.
 const escapeHtml = (v: string) =>
@@ -163,21 +178,29 @@ export default function RealMap({
     : buses;
 
   const getCustomIcon = (bus: any, isSelected: boolean) => {
-    const speed = bus.gpsLogs?.[0]?.speed || 0;
     // Carried on the bus row by mergeBusPosition, which is where the previous value
     // lives. Deciding it here would mean mutating a ref during render.
     const isAlert = Boolean(bus.speeding);
-    const isDelayed = bus.status === 'delayed';
+    // Colour used to key off `bus.status === 'delayed'`, a value nothing ever sets, so
+    // every marker not speeding was green — including a bus whose last fix was hours
+    // old. Green has to mean the position is current; anything else says its age.
+    const state = trackerState(bus);
+    const age = state === 'live' ? null : describeFreshness(bus);
 
-    const cacheKey = `${bus.id}-${isSelected}-${isAlert}-${isDelayed}`;
-    
+    const cacheKey = `${bus.id}-${isSelected}-${isAlert}-${state}-${age}`;
+
     const cached = iconCache.get(cacheKey);
     if (cached) return cached;
 
-    const bgColorClass = isAlert ? 'bg-red-500' : isDelayed ? 'bg-amber-500' : 'bg-emerald-500';
-    const labelBgClass = isAlert ? 'bg-red-900' : isDelayed ? 'bg-amber-900' : 'bg-slate-900';
+    // Same colours as the Live Tracking legend beside this map: overspeed orange (with the
+    // warning glyph), not reporting red. Overspeed used to be red here, and the legend
+    // said otherwise.
+    const bgColorClass = isAlert ? 'bg-orange-500' : MARKER_BG[state];
+    const labelBgClass = isAlert ? 'bg-orange-900' : state === 'silent' ? 'bg-red-900' : state === 'stale' ? 'bg-amber-900' : 'bg-slate-900';
 
-    const label = escapeHtml(String(bus.name || bus.licensePlate || bus.registrationNumber || 'Bus'));
+    const name = String(bus.name || bus.licensePlate || bus.registrationNumber || 'Bus');
+    // Colour alone never carries the status: a non-live marker names its age.
+    const label = escapeHtml(age ? `${name} · ${age}` : name);
 
     const ring = isSelected
       ? '<span class="absolute -inset-2.5 rounded-full bg-orange-500/40 animate-ping"></span>' +
@@ -317,15 +340,14 @@ export default function RealMap({
                     </div>
 
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500 font-medium">Status</span>
-                      <span className={clsx(
-                        "font-bold uppercase text-[9px] px-2 py-0.5 rounded-full",
-                        bus.gpsLogs[0].speed > 60 ? "bg-red-100 text-red-700" :
-                        bus.status === 'delayed' ? "bg-amber-100 text-amber-700" :
-                        "bg-emerald-100 text-emerald-700"
-                      )}>
-                        {bus.gpsLogs[0].speed > 60 ? 'OVERSPEED' : bus.status || 'ACTIVE'}
+                      <span className="text-slate-500 font-medium">GPS</span>
+                      <span className={clsx("font-bold uppercase text-[9px] px-2 py-0.5 rounded-full", STATE_LABEL[trackerState(bus)][1])}>
+                        {STATE_LABEL[trackerState(bus)][0]}
                       </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500 font-medium">Last fix</span>
+                      <span className="font-semibold text-slate-700">{describeFreshness(bus)}</span>
                     </div>
                   </div>
 
