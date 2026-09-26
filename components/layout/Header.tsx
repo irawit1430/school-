@@ -202,8 +202,10 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
 
   const handleResolveIncident = async (notif: AppNotification, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!token || !isActiveEmergency(notif)) return;
-    if (!window.confirm(`Resolve this incident?\n\n${notif.title}\n${notif.message}\n\nOnly continue if the incident has actually been handled.`)) return;
+    // A row keyed by an id made up on this side cannot be resolved: the server would be
+    // asked to close something it never issued (spec §9).
+    if (!token || !isActiveEmergency(notif) || !notif.persisted) return;
+    if (!window.confirm(`Mark this emergency handled?\n\n${notif.title}\n${notif.message}\n\nOnly continue if the incident has actually been handled.`)) return;
 
     try {
       await resolveAlert(notif.id);
@@ -212,9 +214,9 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
         : item));
       clearApiCache();
       fetchNotifications({ force: true });
-      toast.success('Incident resolved');
+      toast.success('Emergency marked as handled.');
     } catch (error) {
-      toast.error(apiErrorMessage(error, 'Failed to resolve incident.'));
+      toast.error(apiErrorMessage(error, 'Could not mark this as handled. It stays open.'));
     }
   };
 
@@ -436,9 +438,10 @@ export function Header({ title = "Voltava", subtitle, onMenuClick }: HeaderProps
                               {activeEmergency && (
                                 <button
                                   onClick={(e) => handleResolveIncident(notif, e)}
-                                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 whitespace-nowrap"
+                                  disabled={!notif.persisted}
+                                  className="text-xs font-semibold text-rose-600 hover:text-rose-700 whitespace-nowrap disabled:opacity-50"
                                 >
-                                  Resolve incident
+                                  {notif.persisted ? 'Mark handled' : 'Syncing…'}
                                 </button>
                               )}
                               {emergency && !activeEmergency && (

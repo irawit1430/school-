@@ -41,3 +41,10 @@ test('keeps emergency lifecycle separate from presentation severity', () => {
   expect(notificationSeverity('DELAY')).toBe('warning');
   expect(notificationSeverity('PASSWORD_RESET')).toBe('info');
 });
+
+test('an id made up for a payload without one is marked unresolvable', () => {
+  expect(normalizeNotification({ _id: 'n-1', type: 'SOS' }).persisted).toBe(true);
+  const local = normalizeNotification({ type: 'DRIVER_SOS', createdAt: '2026-09-27T02:30:00.000Z', message: 'SOS' });
+  expect(local.persisted).toBe(false);
+  expect(local.id).toBe('DRIVER_SOS:2026-09-27T02:30:00.000Z:SOS');
+});

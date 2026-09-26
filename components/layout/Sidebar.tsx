@@ -28,19 +28,36 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     setShowBroadcast(true);
   };
 
-  const menuItems = [
-    // 'Overview' named a page of asset totals. It leads with the operational figures now,
-    // and the route stays /overview so every existing link and bookmark still works.
-    { href: '/overview', label: 'Command Centre', icon: Bus },
-    { href: '/map', label: 'Live Bus Tracking', icon: Map },
-    { href: '/buses', label: 'Buses', icon: Bus },
-    { href: '/drivers', label: 'Drivers', icon: Users },
-    { href: '/routes', label: 'Routes & Stops', icon: Route },
-    { href: '/schedules', label: 'Schedules', icon: CalendarClock },
-    { href: '/calendar', label: 'School Holidays', icon: CalendarOff },
-    { href: '/students', label: 'Students & Attendance', icon: Users },
-    { href: '/cards', label: 'QR Cards', icon: QrCode },
-    { href: '/leaves', label: 'Leave Requests', icon: CalendarDays },
+  // Grouped by the job someone opens the dashboard to do, not by the order the pages were
+  // built in. Twelve flat links put the live map between two setup screens.
+  const menuGroups = [
+    {
+      label: 'Live Operations',
+      items: [
+        // 'Overview' named a page of asset totals. It leads with the operational figures
+        // now, and the route stays /overview so every existing link and bookmark works.
+        { href: '/overview', label: 'Command Centre', icon: Bus },
+        { href: '/map', label: 'Live Bus Tracking', icon: Map },
+      ],
+    },
+    {
+      label: 'Students',
+      items: [
+        { href: '/students', label: 'Students & Attendance', icon: Users },
+        { href: '/cards', label: 'QR Cards', icon: QrCode },
+        { href: '/leaves', label: 'Leave Requests', icon: CalendarDays },
+      ],
+    },
+    {
+      label: 'Transport Setup',
+      items: [
+        { href: '/buses', label: 'Buses', icon: Bus },
+        { href: '/drivers', label: 'Drivers', icon: Users },
+        { href: '/routes', label: 'Routes & Stops', icon: Route },
+        { href: '/schedules', label: 'Schedules', icon: CalendarClock },
+        { href: '/calendar', label: 'School Calendar', icon: CalendarOff },
+      ],
+    },
   ];
 
   return (
@@ -78,26 +95,35 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </button>
       </div>
 
-      <nav className="flex-1 px-4 py-2 space-y-1">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={clsx(
-                "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                isActive
-                  ? "bg-primary text-white font-medium"
-                  : "text-slate-300 hover:bg-slate-800"
-              )}
-            >
-              <Icon size={18} className={isActive ? "text-white" : "text-slate-400"} />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav aria-label="Main" className="flex-1 overflow-y-auto px-4 py-2 space-y-4">
+        {menuGroups.map(group => (
+          <div key={group.label}>
+            <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group.label}</p>
+            <ul className="space-y-1">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={isActive ? 'page' : undefined}
+                      className={clsx(
+                        "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                        isActive
+                          ? "bg-primary text-white font-medium"
+                          : "text-slate-300 hover:bg-slate-800"
+                      )}
+                    >
+                      <Icon size={18} className={isActive ? "text-white" : "text-slate-400"} />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="p-4 border-t border-slate-800">
