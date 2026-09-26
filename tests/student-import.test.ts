@@ -1,153 +1,144 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseStudentImportCSV, STUDENT_IMPORT_TEMPLATE } from '../lib/studentImport';
-import { clearApiCache, fetchStats, importStudentsCSV } from '../lib/api';
+import { importResultCsv, parseStudentImportCSV, STUDENT_IMPORT_TEMPLATE } from '../lib/studentImport';
+import { checkStudentImport, clearApiCache, commitStudentImport, fetchStats } from '../lib/api';
 
-const header = 'name,rollNumber,guardianName,guardianPhone';
+const header = 'studentId,name,grade,guardianName,guardianPhone,parentEmail,route,stop,cardCode';
 
-describe('student CSV import validation', () => {
-  it('preserves quoted commas, escaped quotes, multiline values, BOM and CRLF', () => {
-    const result = parseStudentImportCSV('\uFEFF' + header + '\r\n"Patel, Asha",0007,"Ravi ""Raj""\r\nPatel",+919876543210\r\n');
+describe('roster CSV reading', () => {
+  it('reads every roster column into what the server takes, keeping leading zeros', () => {
+    const result = parseStudentImportCSV(header + '\n0007,Asha Kumari,5B,Sunita Devi,+91 98765 43210,Sunita@Mail.com,Route 1,Rajendra Nagar,');
     expect(result.valid).toBe(true);
-    expect(result.totalRows).toBe(1);
     expect(result.payload).toEqual([{
-      name: 'Patel, Asha', rollNumber: '0007', guardianName: 'Ravi "Raj"\nPatel', guardianPhone: '+919876543210',
+      line: 2, rfidTag: '0007', name: 'Asha Kumari', grade: '5B', guardianPhone: '+91 98765 43210',
+      parentEmail: 'sunita@mail.com', parentName: 'Sunita Devi', route: 'Route 1', stop: 'Rajendra Nagar', qrToken: null,
     }]);
   });
 
-  it('matches only explicit aliases and allows columns in a different order', () => {
-    const result = parseStudentImportCSV('Guardian Phone,Roll Number,Parent Name,Student Name\n09876543210,R-4,Parent,Student');
+  it('needs only a Student ID and a name; the rest can come later', () => {
+    const result = parseStudentImportCSV('Admission No,Student Name\nA-1,Asha');
     expect(result.valid).toBe(true);
-    expect(result.payload[0]).toEqual({ name: 'Student', rollNumber: 'R-4', guardianName: 'Parent', guardianPhone: '09876543210' });
+    expect(result.payload[0]).toMatchObject({ rfidTag: 'A-1', name: 'Asha', parentEmail: null, route: null });
+    // But says what that leaves undone.
+    expect(result.warnings.join(' ')).toMatch(/no parentEmail column/);
+    expect(result.warnings.join(' ')).toMatch(/no route and stop columns/);
   });
 
-  it('does not mistake RFID or parent email for roll number or student name', () => {
-    const result = parseStudentImportCSV('parent email,rfid,guardian name,guardian phone\nparent@example.com,RFID1,Parent,9876543210');
-    expect(result.valid).toBe(false);
-    expect(result.errors.some(error => error.message.includes('name'))).toBe(true);
-    expect(result.errors.some(error => error.message.includes('rollNumber'))).toBe(true);
-    expect(result.payload).toEqual([]);
+  it('still reads the old four-column file: its roll number is the Student ID', () => {
+    const result = parseStudentImportCSV('name,rollNumber,guardianName,guardianPhone\nAsha,R-4,Rani,9876543210');
+    expect(result.valid).toBe(true);
+    expect(result.payload[0]).toMatchObject({ rfidTag: 'R-4', name: 'Asha', parentName: 'Rani', guardianPhone: '9876543210' });
   });
 
-  it('rejects multiple headers mapping to the same required field', () => {
-    const result = parseStudentImportCSV(header + ',student name\nStudent,R1,Parent,9876543210,Other Student');
-    expect(result.valid).toBe(false);
-    expect(result.errors.some(error => /ambiguous/i.test(error.message))).toBe(true);
-  });
-
-  it('rejects duplicate unknown headers too', () => {
-    const result = parseStudentImportCSV(header + ',Grade, grade \nStudent,R1,Parent,9876543210,1,2');
-    expect(result.valid).toBe(false);
-    expect(result.errors.some(error => /duplicate/i.test(error.message))).toBe(true);
-  });
-
-  it('previews all rows and prevents partial import if one row is incomplete', () => {
-    const result = parseStudentImportCSV(header + '\nStudent,R1,Parent,9876543210\nOther,R2,,');
-    expect(result.totalRows).toBe(2);
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[1].rowNumber).toBe(3);
-    expect(result.rows[1].errors).toEqual(expect.arrayContaining(['guardianName is required.', 'guardianPhone is required.']));
-    expect(result.valid).toBe(false);
-    expect(result.payload).toEqual([]);
-  });
-
-  it('reports a blank interior row instead of silently dropping it', () => {
-    const result = parseStudentImportCSV(header + '\nStudent,R1,Parent,9876543210\n\nOther,R2,Parent,9876543210');
-    expect(result.totalRows).toBe(3);
-    expect(result.rows.find(row => row.rowNumber === 3)?.errors.length).toBeGreaterThan(0);
-    expect(result.valid).toBe(false);
+  it('preserves quoted commas, escaped quotes, multiline values, BOM and CRLF', () => {
+    const result = parseStudentImportCSV('﻿' + 'studentId,name,guardianName\r\n0007,"Patel, Asha","Ravi ""Raj""\r\nPatel"\r\n');
+    expect(result.valid).toBe(true);
+    expect(result.payload[0]).toMatchObject({ rfidTag: '0007', name: 'Patel, Asha', parentName: 'Ravi "Raj"\nPatel' });
   });
 
   it.each([
-    'Student,R1,Parent',
-    'Student,R1,Parent,9876543210,unexpected',
-  ])('reports a row with the wrong number of columns: %s', row => {
-    const result = parseStudentImportCSV(header + '\n' + row);
-    expect(result.errors.some(error => /columns/i.test(error.message))).toBe(true);
+    ['a missing Student ID', 'A-1,Asha\n,Bina', /Line 3: studentId is required/],
+    ['a Student ID twice, whatever the case', 'r1,Asha\nR1,Bina', /Duplicate studentId/],
+  ])('reports %s by line', (_label, rows, message) => {
+    const result = parseStudentImportCSV('studentId,name\n' + rows);
+    expect(result.valid).toBe(false);
+    expect(result.errors.map(e => `Line ${e.rowNumber}: ${e.message}`).join('\n')).toMatch(message);
     expect(result.payload).toEqual([]);
   });
 
   it.each([
-    '"Student,R1,Parent,9876543210',
-    'Stu"dent,R1,Parent,9876543210',
-    '"Student"oops,R1,Parent,9876543210',
+    ['a bad email', 'A,Asha,not-an-email,,', /parentEmail is not a valid email/],
+    ['a route without a stop', 'A,Asha,,Route 1,', /A route needs a stop/],
+    ['a stop without a route', 'A,Asha,,,Gate', /A stop needs its route/],
+  ])('rejects %s', (_label, row, message) => {
+    const result = parseStudentImportCSV('studentId,name,parentEmail,route,stop\n' + row);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => message.test(e.message))).toBe(true);
+  });
+
+  it('rejects a card code used twice in the file', () => {
+    const result = parseStudentImportCSV('studentId,name,cardCode\nA,Asha,CARD-1\nB,Bina,CARD-1');
+    expect(result.rows.every(r => r.errors.some(e => /Duplicate cardCode/.test(e)))).toBe(true);
+  });
+
+  it('rejects non-phone text and keeps formatted phone numbers', () => {
+    expect(parseStudentImportCSV('studentId,name,guardianPhone\nA,Asha,hello').valid).toBe(false);
+    expect(parseStudentImportCSV('studentId,name,guardianPhone\nA,Asha,+91 (98765) 43210').payload[0].guardianPhone).toBe('+91 (98765) 43210');
+  });
+
+  it('rejects ambiguous and duplicate headers', () => {
+    expect(parseStudentImportCSV('studentId,name,student name\nA,Asha,Asha').errors.some(e => /ambiguous/i.test(e.message))).toBe(true);
+    expect(parseStudentImportCSV('studentId,name,Foo,foo\nA,Asha,1,2').errors.some(e => /duplicate header/i.test(e.message))).toBe(true);
+  });
+
+  it.each([
+    '"A,Asha',
+    'A,Ash"a',
+    '"A"oops,Asha',
   ])('rejects malformed quoting: %s', row => {
-    const result = parseStudentImportCSV(header + '\n' + row);
+    const result = parseStudentImportCSV('studentId,name\n' + row);
     expect(result.valid).toBe(false);
     expect(result.errors.some(error => /quot/i.test(error.message))).toBe(true);
   });
 
-  it('flags both rows sharing the same roll number', () => {
-    const result = parseStudentImportCSV(header + '\nStudent,R1,Parent,9876543210\nOther, R1 ,Parent,9876543210');
-    expect(result.rows.every(row => row.errors.some(error => /duplicate roll number/i.test(error)))).toBe(true);
-    expect(result.payload).toEqual([]);
-  });
-
-  it('warns about ignored fields and excludes them from the payload', () => {
-    const result = parseStudentImportCSV(header + ',grade,parentEmail,rfidTag\nStudent,R1,Parent,9876543210,5,parent@example.com,RFID1');
-    expect(result.valid).toBe(true);
-    expect(result.warnings.join(' ')).toContain('grade');
-    expect(result.warnings.join(' ')).toContain('parentEmail');
-    expect(result.warnings.join(' ')).toContain('rfidTag');
-    expect(Object.keys(result.payload[0])).toEqual(['name', 'rollNumber', 'guardianName', 'guardianPhone']);
-  });
-
-  it('rejects non-phone text and preserves formatted phone numbers', () => {
-    expect(parseStudentImportCSV(header + '\nStudent,R1,Parent,hello').valid).toBe(false);
-    expect(parseStudentImportCSV(header + '\nStudent,R1,Parent,+91 (98765) 43210').payload[0].guardianPhone).toBe('+91 (98765) 43210');
-  });
-
   it('uses physical line numbers after quoted multiline records', () => {
-    const result = parseStudentImportCSV(header + '\n"Asha\nPatel",R1,Parent,9876543210\nOther,R2,,9876543210');
+    const result = parseStudentImportCSV('studentId,name\nA,"Asha\nPatel"\n,Other');
     expect(result.rows[1].rowNumber).toBe(4);
     expect(result.errors.some(error => error.rowNumber === 4)).toBe(true);
   });
 
-  it('provides a header-only template and rejects files without data rows', () => {
+  it('provides a header-only template with every roster column', () => {
     expect(STUDENT_IMPORT_TEMPLATE).toBe(header + '\r\n');
     expect(parseStudentImportCSV(STUDENT_IMPORT_TEMPLATE).valid).toBe(false);
     expect(parseStudentImportCSV('').valid).toBe(false);
   });
 });
 
-describe('student import API boundary and optional stats failures', () => {
+describe('the results file', () => {
+  it('lists every row with its result and problems, safe to open in Excel', () => {
+    const csv = importResultCsv([
+      { line: 2, rfidTag: 'A-1', name: 'Asha', state: 'INVITE_READY', parent: { action: 'NEW', email: 'a@x.com' }, stop: { action: 'ASSIGN', route: 'Route 1', stop: 'Gate' }, errors: [], warnings: [] },
+      { line: 3, rfidTag: '=HYPERLINK("x")', name: 'Bina, K', state: 'NEEDS_CORRECTION', parent: { action: 'NONE', email: null }, stop: { action: 'NONE', route: null, stop: null }, errors: ['No route called "Route 9".'], warnings: [] },
+    ]);
+    const lines = csv.trim().split('\r\n');
+    expect(lines[0]).toBe('line,studentId,name,result,parent,stop,problems');
+    expect(lines[1]).toBe('2,A-1,Asha,INVITE_READY,NEW a@x.com,Route 1 / Gate,');
+    expect(lines[2]).toBe('3,"\'=HYPERLINK(""x"")","Bina, K",NEEDS_CORRECTION,none,none,"No route called ""Route 9""."');
+  });
+});
+
+describe('roster import API', () => {
   beforeEach(() => {
     clearApiCache();
     vi.stubGlobal('window', {});
     vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'voltava_user' ? JSON.stringify({ schoolId: 'school-test' }) : null });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ dryRun: true, committed: false, totals: {}, rows: [] }), { status: 200 })));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); clearApiCache(); });
 
-  it('submits exactly the validated four-field payload', async () => {
-    const file = new File([header + ',grade\n"Patel, Asha",0007,Parent,+919876543210,4'], 'students.csv');
-    await importStudentsCSV(file);
-    expect(fetch).toHaveBeenCalledTimes(1);
-    const [url, init] = vi.mocked(fetch).mock.calls[0];
-    expect(String(url)).toMatch(/\/schools\/school-test\/students\/bulk$/);
-    expect(init?.method).toBe('POST');
-    expect(JSON.parse(String(init?.body))).toEqual([{ name: 'Patel, Asha', rollNumber: '0007', guardianName: 'Parent', guardianPhone: '+919876543210' }]);
+  const rows = parseStudentImportCSV(header + '\n0007,Asha,5B,Rani,9876543210,rani@x.com,Route 1,Gate,').payload;
+
+  it('checks with a dry run, then imports the same rows', async () => {
+    await checkStudentImport(rows);
+    await commitStudentImport(rows);
+    const [[checkUrl, checkInit], [commitUrl, commitInit]] = vi.mocked(fetch).mock.calls;
+    expect(String(checkUrl)).toMatch(/\/schools\/school-test\/students\/bulk\?dryRun=1$/);
+    expect(String(commitUrl)).toMatch(/\/schools\/school-test\/students\/bulk$/);
+    expect(JSON.parse(String(checkInit?.body))).toEqual(rows);
+    expect(JSON.parse(String(commitInit?.body))).toEqual(rows);
   });
 
-  it('never sends any request for an invalid file, including a super-admin school lookup', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify({ role: 'SUPER_ADMIN' }) });
-    const file = new File([header + '\nStudent,R1,Parent,9876543210\nOther,R2,,'], 'students.csv');
-    await expect(importStudentsCSV(file)).rejects.toMatchObject({ status: 400 });
-    expect(fetch).not.toHaveBeenCalled();
+  it('hands back a refused import as its per-row results, not as a bare error', async () => {
+    const refused = { error: '1 row needs correcting. Nothing was imported.', dryRun: false, committed: false, totals: { needsCorrection: 1 }, rows: [{ line: 2, errors: ['x'] }] };
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(refused), { status: 409 }));
+    await expect(commitStudentImport(rows)).resolves.toMatchObject({ committed: false, totals: { needsCorrection: 1 } });
   });
 
-  it('reports file read errors without a request', async () => {
-    const file = { text: () => Promise.reject(new Error('Cannot read file')) } as File;
-    await expect(importStudentsCSV(file)).rejects.toMatchObject({ status: 400 });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('preserves backend import failure status and validation details', async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'Roll number exists', issues: [{ path: 'rollNumber', message: 'Roll number R1 is already registered.' }] }), { status: 409 }));
-    const file = new File([header + '\nStudent,R1,Parent,9876543210'], 'students.csv');
-    await expect(importStudentsCSV(file)).rejects.toMatchObject({ status: 409, issues: [{ path: 'rollNumber', message: 'Roll number R1 is already registered.' }] });
+  it('still throws any other failure', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ error: 'Import aborted: taken' }), { status: 409 }));
+    await expect(commitStudentImport(rows)).rejects.toMatchObject({ status: 409, message: 'Import aborted: taken' });
   });
 
   it('preserves the existing stats fallback but lets strict callers detect fetch failure', async () => {

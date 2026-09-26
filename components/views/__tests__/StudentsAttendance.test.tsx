@@ -8,7 +8,7 @@ const navigation = vi.hoisted(() => ({ query: '' }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(navigation.query) }));
 vi.mock('@/lib/api', () => ({
   fetchStudents: vi.fn(), fetchTodayAttendance: vi.fn(), fetchStats: vi.fn(), fetchRoutes: vi.fn(),
-  fetchNotifications: vi.fn(), createStudent: vi.fn(), importStudentsCSV: vi.fn(),
+  fetchNotifications: vi.fn(), createStudent: vi.fn(), checkStudentImport: vi.fn(), commitStudentImport: vi.fn(), sendParentInvite: vi.fn(),
   assignStudentToStop: vi.fn(), updateStudentMapping: vi.fn(), sendMessageToParent: vi.fn(), clearApiCache: vi.fn(),
   resetParentPassword: vi.fn(), fetchPasswordResetRequests: vi.fn(), approvePasswordReset: vi.fn(), rejectPasswordReset: vi.fn(),
   apiErrorMessage: (error: Error, fallback: string) => error.message || fallback,
@@ -131,9 +131,9 @@ test('a pending optional panel does not lock refresh of the roster', async () =>
   expect(api.fetchStudents).toHaveBeenCalledTimes(2);
 });
 
-test('a successful registration keeps its credentials visible if the roster refresh fails', async () => {
+test('a new family is offered its invite straight away, never a password, even if the refresh fails', async () => {
   await render();
-  vi.mocked(api.createStudent).mockResolvedValue({ parentCredentials: { email: 'new@example.test', temporaryPassword: 'one-time-test-password' } });
+  vi.mocked(api.createStudent).mockResolvedValue({ student: { id: 'student-new', name: 'Cora' }, stopAssigned: false, parent: { id: 'parent-new', email: 'new@example.test', created: true, invited: false } });
   vi.mocked(api.fetchStudents).mockRejectedValue(new Error('Refresh unavailable'));
   await click(button('Add New Student'));
   await fill(host.querySelector<HTMLInputElement>('input[name="name"]')!, '  Cora  ');
@@ -141,10 +141,22 @@ test('a successful registration keeps its credentials visible if the roster refr
   await fill(host.querySelector<HTMLInputElement>('input[name="parentEmail"]')!, 'new@example.test');
   await submit();
   expect(api.createStudent).toHaveBeenCalledWith(expect.objectContaining({ name: 'Cora', parentName: 'Parent C' }));
-  expect(host.textContent).toContain('Student Added!');
-  expect(host.textContent).toContain('one-time-test-password');
+  expect(host.textContent).toContain('Invite Parent C');
+  expect(host.textContent).toContain('new@example.test');
+  expect(host.textContent).not.toMatch(/temporary password/i);
   expect(host.textContent).toContain('Refresh unavailable');
   expect(host.querySelector('tbody')!.textContent).toContain('Asha');
+});
+
+test('the stop goes with the child in one request', async () => {
+  await render();
+  vi.mocked(api.createStudent).mockResolvedValue({ student: { id: 'student-new', name: 'Cora' }, stopAssigned: true, parent: null });
+  await click(button('Add New Student'));
+  await fill(host.querySelector<HTMLInputElement>('input[name="name"]')!, 'Cora');
+  await fill(host.querySelector<HTMLInputElement>('input[name="parentName"]')!, 'Parent C');
+  await fill(host.querySelector<HTMLInputElement>('input[name="parentEmail"]')!, 'new@example.test');
+  await submit();
+  expect(api.assignStudentToStop).not.toHaveBeenCalled();
 });
 
 test('automatic refresh updates boarding status and clamps a shrinking second page', async () => {

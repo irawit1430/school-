@@ -2,7 +2,7 @@ import { CONFIG } from './config';
 import { io, Socket } from 'socket.io-client';
 import { cachedGet, clearApiCache } from './apiCache';
 import { normalizeNotification } from './notifications';
-import { parseStudentImportCSV } from './studentImport';
+import type { RosterPayloadRow } from './studentImport';
 import type { Direction } from './runs';
 
 export { clearApiCache };
@@ -432,14 +432,25 @@ export const fetchStudents = async () => {
   return api(`/schools/${schoolId}/students`);
 };
 
+/**
+ * Child, parent account and stop in one request and one transaction on the server: the
+ * child is either ready to ride or nothing was saved. Returns who to invite.
+ */
+export interface CreatedStudent {
+  student: { id: string; name: string };
+  stopAssigned: boolean;
+  parent: { id: string; email: string; created: boolean; invited: boolean } | null;
+}
 export const createStudent = async (data: {
   name: string;
   rfidTag?: string;
   grade?: string;
   parentEmail?: string;
-    parentName?: string;
-    guardianPhone?: string;
-}) => {
+  parentName?: string;
+  guardianPhone?: string;
+  routeStopId?: string;
+  direction?: Direction | null;
+}): Promise<CreatedStudent> => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
   return api(`/schools/${schoolId}/students`, { method: 'POST', body: data });
@@ -592,6 +603,116 @@ export const fetchQrCards = async (studentIds: string[]) => {
   }>>(`/schools/${schoolId}/qr-cards`, { method: 'POST', body: { studentIds } });
 };
 
+/**
+ * The office confirms a print run came out right. Only then is a card "printed", which is
+ * what tells a driver to expect a card from that child.
+ */
+export const confirmCardsPrinted = async (studentIds: string[]) => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<{ confirmed: number; printedAt: string }>(`/schools/${schoolId}/qr-cards/printed`, { method: 'POST', body: { studentIds } });
+};
+
+/** A lost or damaged card: a new code, and the old card stops working. */
+export const replaceCard = (studentId: string) =>
+  api<{ studentId: string; replaced: boolean }>(`/students/${studentId}/qr-card/replace`, { method: 'POST', body: {} });
+
+// ─── Parent invites and activation ─────────────────────────
+// Every family gets its own one-time code, sent by email from the server or handed over
+// by the office (WhatsApp, SMS, a printed letter). The activation page shows where each
+// family stands, from "not invited" to alerts reaching their phone.
+export type ParentStage = 'NOT_INVITED' | 'INVITE_SENT' | 'INVITE_EXPIRED' | 'EMAIL_FAILED' | 'SIGNED_IN' | 'ACTIVATED';
+export type ParentPushState = 'NONE' | 'REGISTERED' | 'DELIVERING' | 'FAILING' | 'IPHONE_NOT_SENDING';
+export type InviteChannel = 'EMAIL' | 'WHATSAPP' | 'SMS' | 'PRINT' | 'COPY';
+
+export interface ActivationParent {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  stage: ParentStage;
+  children: Array<{ id: string; name: string; grade: string | null; hasStop: boolean }>;
+  invite: { sentAt: string | null; expiresAt: string | null; channel: string | null };
+  signedInAt: string | null;
+  passwordChosen: boolean;
+  push: { state: ParentPushState; devices: Array<{ platform: string; provider: string; enabled: boolean; lastAcceptedAt: string | null; lastFailure: string | null }> };
+  lastSeenAt: string | null;
+}
+export interface ParentActivation {
+  totals: {
+    students: number; studentsWithoutParent: number; studentsWithoutStop: number; parents: number;
+    stages: Partial<Record<ParentStage, number>>;
+    push: Partial<Record<ParentPushState, number>>;
+  };
+  parents: ActivationParent[];
+  studentsWithoutParent: Array<{ id: string; name: string; grade: string | null; rfidTag: string; guardianPhone: string | null }>;
+  emailConfigured: boolean;
+  iphonePushConfigured: boolean;
+  appLinks: { android: string | null; ios: string | null };
+  inviteDays: number;
+}
+
+export const fetchParentActivation = async () => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<ParentActivation>(`/schools/${schoolId}/parent-activation`);
+};
+
+/** What an invite handed back. `code` only for channels the office sends itself. */
+export interface InviteResult {
+  parentId: string;
+  channel: InviteChannel;
+  sent: boolean | null;
+  expiresAt: string;
+  code?: string;
+  name?: string;
+  email?: string;
+  phone?: string | null;
+  childNames?: string[];
+  message?: { subject: string; text: string };
+}
+
+export const sendParentInvite = (parentId: string, channel: InviteChannel) =>
+  api<InviteResult>(`/parents/${parentId}/invite`, { method: 'POST', body: { channel } });
+
+export const sendParentInvites = async (parentIds: string[], channel: 'EMAIL' | 'PRINT') => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<{
+    channel: string;
+    sent: number;
+    failed: Array<{ parentId: string; error: string }>;
+    skipped: Array<{ parentId: string; reason: string; error: string }>;
+    letters?: InviteResult[];
+  }>(`/schools/${schoolId}/parent-invites`, { method: 'POST', body: { parentIds, channel } });
+};
+
+export const revokeParentInvite = (parentId: string) =>
+  api<{ parentId: string; revoked: boolean }>(`/parents/${parentId}/invite/revoke`, { method: 'POST', body: {} });
+
+// ─── Readiness (the office's exception queue) ─────────────
+export interface ReadinessItem {
+  key: string;
+  severity: 'critical' | 'warning' | 'info';
+  count: number;
+  title: string;
+  detail: string;
+  href: string;
+}
+export interface Readiness {
+  generatedAt: string;
+  platform: { degraded: boolean; alarms: Array<{ check: string; since: string; message: string }> };
+  items: ReadinessItem[];
+  counts: { students: number; parents: number; stages: Partial<Record<ParentStage, number>> };
+  setup: { androidPush: boolean; iphonePush: boolean; email: boolean; appLinks: { android: string | null; ios: string | null } };
+}
+
+export const fetchReadiness = async () => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<Readiness>(`/schools/${schoolId}/readiness`);
+};
+
 // ─── Runs (recurring schedules) ────────────────────────────
 // A Run is a recurring service on a route: a direction, a wall-clock departure and a
 // weekday pattern. An overnight materialiser turns runs into the Trip rows that already
@@ -671,19 +792,49 @@ export const sendBroadcast = async (data: any) => {
 // ─── Device Locations (for Live Map initial load) ──────────
 export const fetchDeviceLocations = () =>
   api('/devices/locations');
-export const importStudentsCSV = async (file: File) => {
-  let text: string;
-  try {
-    text = await file.text();
-  } catch {
-    throw new ApiError('Could not read this CSV file. Select it again and retry.', 400);
-  }
-  const preview = parseStudentImportCSV(text);
-  if (!preview.valid) {
-    throw new ApiError('Correct the CSV errors before importing students.', 400,
-      preview.errors.map(error => ({ path: `row.${error.rowNumber}`, message: `Line ${error.rowNumber}: ${error.message}` })));
-  }
+// ─── Roster import ────────────────────────────────────────
+// Two calls with the same rows: a check that writes nothing and says, row by row, what
+// would happen; then the import, which the server refuses outright if any row still
+// needs correcting. Rerunning the same file changes nothing.
+export type ImportRowState = 'NEEDS_CORRECTION' | 'INVITE_READY' | 'EXISTING_PARENT_LINKED' | 'PARENT_LINKED' | 'NO_PARENT';
+export interface ImportRowResult {
+  line: number;
+  name: string;
+  rfidTag: string;
+  student: 'NEW' | 'UPDATE' | 'UNCHANGED';
+  state: ImportRowState;
+  parent: { action: 'NEW' | 'LINK_NEW' | 'LINK_EXISTING' | 'ALREADY' | 'NONE'; email: string | null };
+  stop: { action: 'ASSIGN' | 'ALREADY' | 'NONE'; route: string | null; stop: string | null };
+  card: 'GENERATED' | 'IMPORTED' | 'ATTACH' | 'KEPT';
+  ready: boolean;
+  changes: string[];
+  errors: string[];
+  warnings: string[];
+}
+export interface ImportTotals {
+  rows: number; new: number; updated: number; unchanged: number; needsCorrection: number;
+  parentsCreated: number; parentsLinked: number; noParent: number; stopsAssigned: number; noStop: number; ready: number;
+}
+export interface ImportResult {
+  dryRun: boolean;
+  committed: boolean;
+  totals: ImportTotals;
+  rows: ImportRowResult[];
+  message?: string;
+  error?: string;
+}
+
+const rosterImport = async (rows: RosterPayloadRow[], dryRun: boolean): Promise<ImportResult> => {
   const schoolId = await getSchoolId();
   if (!schoolId) throw new ApiError('No school ID found', 0);
-  return api(`/schools/${schoolId}/students/bulk`, { method: 'POST', body: preview.payload });
+  try {
+    return await api<ImportResult>(`/schools/${schoolId}/students/bulk${dryRun ? '?dryRun=1' : ''}`, { method: 'POST', body: rows });
+  } catch (err) {
+    // A refused import still carries every row's result; hand it back as one.
+    if (err instanceof ApiError && err.status === 409 && Array.isArray(err.data?.rows)) return err.data as ImportResult;
+    throw err;
+  }
 };
+
+export const checkStudentImport = (rows: RosterPayloadRow[]) => rosterImport(rows, true);
+export const commitStudentImport = (rows: RosterPayloadRow[]) => rosterImport(rows, false);

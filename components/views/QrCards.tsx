@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useEffect, useMemo } from 'react';
 import QRCode from 'qrcode';
-import { fetchStudents, fetchQrCards, apiErrorMessage } from '@/lib/api';
-import { Printer, Search, Info, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { fetchStudents, fetchQrCards, confirmCardsPrinted, replaceCard, apiErrorMessage } from '@/lib/api';
+import { Printer, Search, Info, CheckSquare, Square, Loader2, RotateCcw } from 'lucide-react';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -36,15 +36,47 @@ export function QrCards() {
   const [cards, setCards] = useState<CardData[] | null>(null);
   const [qrSvgs, setQrSvgs] = useState<Record<string, string>>({});
   const [isPreparing, setIsPreparing] = useState(false);
+  /** Printed sheets the office has not yet said came out right. */
+  const [awaitingConfirm, setAwaitingConfirm] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
-  useEffect(() => {
+  const loadStudents = () =>
     fetchStudents()
       .then(data => { setStudents(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(err => {
         toast.error(apiErrorMessage(err, 'Failed to load students.'));
         setLoading(false);
       });
-  }, []);
+  useEffect(() => { void loadStudents(); }, []);
+
+  // A card counts as printed only when the office says the sheets came out right: the
+  // driver app reads "printed" as "this child is holding a card", and nobody can see a
+  // printer jam from here. Reprinting gives the same codes, so nothing changes identity.
+  const confirmPrinted = async () => {
+    if (!cards?.length || confirming) return;
+    setConfirming(true);
+    try {
+      const { confirmed } = await confirmCardsPrinted(cards.map(c => c.studentId));
+      toast.success(`${confirmed} ${confirmed === 1 ? 'card is' : 'cards are'} marked printed. Drivers now expect ${confirmed === 1 ? 'this child' : 'these children'} to have a card.`);
+      setAwaitingConfirm(false);
+      await loadStudents();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not mark the cards printed.'));
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleReplace = async (student: any) => {
+    if (!window.confirm(`Give ${student.name} a new card?\n\nTheir current card stops working straight away. Print the new one, then confirm it printed.`)) return;
+    try {
+      await replaceCard(student.id);
+      toast.success(`${student.name}'s old card no longer works. Select them to print the new one.`);
+      await loadStudents();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not replace the card.'));
+    }
+  };
 
   const grades = useMemo(() => {
     const set = new Set<string>();
@@ -231,9 +263,27 @@ export function QrCards() {
                     />
                     <span className="font-semibold text-slate-900 flex-1">{s.name}</span>
                     <span className="text-xs text-slate-500">{s.grade || UNGRADED}</span>
-                    {own && (
+                    {own ? (
                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
                         Has own code
+                      </span>
+                    ) : s.cardPrintedAt ? (
+                      <>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
+                          Printed {new Date(s.cardPrintedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={event => { event.preventDefault(); void handleReplace(s); }}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-orange-700"
+                          title="Lost or damaged card: issue a new code"
+                        >
+                          <RotateCcw size={12} aria-hidden /> Replace
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                        Not printed
                       </span>
                     )}
                   </label>
@@ -253,11 +303,36 @@ export function QrCards() {
               </p>
             </div>
             <button
-              onClick={() => window.print()}
+              onClick={() => { window.print(); setAwaitingConfirm(true); }}
               className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-colors"
             >
               <Printer size={16} /> Print sheets
             </button>
+          </div>
+        )}
+
+        {cards && awaitingConfirm && (
+          <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Did every card print clearly?</p>
+            <p className="mt-0.5">
+              Check each sheet: every code sharp, no card cut off, none missing. Until you confirm, these children still count as
+              having no card. If some came out wrong, print again: the codes stay the same.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => void confirmPrinted()}
+                disabled={confirming}
+                className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {confirming ? 'Saving…' : `Yes, all ${cards.length} printed`}
+              </button>
+              <button
+                onClick={() => setAwaitingConfirm(false)}
+                className="rounded-lg border border-amber-300 bg-white px-4 py-2 font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Not yet
+              </button>
+            </div>
           </div>
         )}
       </div>

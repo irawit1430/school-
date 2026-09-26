@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { EmergencyAlertBanner } from '@/components/layout/EmergencyAlertBanner';
+import { PlatformHealthBanner } from '@/components/layout/PlatformHealthBanner';
 import { SessionExpiryNotice } from '@/components/layout/SessionExpiryNotice';
 import { SupportSchoolGate } from '@/components/layout/SupportSchoolGate';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -73,6 +74,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 lg:ml-64 flex flex-col min-w-0">
         <Header onMenuClick={() => setSidebarOpen(true)} />
+        {/* In the page column, under the header: the platform's own health, in the school's words. */}
+        <PlatformHealthBanner />
         <main className="flex-1 overflow-auto">
           {children}
         </main>

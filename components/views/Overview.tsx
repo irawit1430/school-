@@ -12,6 +12,7 @@ import { ActiveRoutesWidget } from './overview/ActiveRoutesWidget';
 import { RecentLeavesWidget } from './overview/RecentLeavesWidget';
 import { SetupChecklist, setupSteps } from './overview/SetupChecklist';
 import { NeedsAttention, needsAttention } from './overview/NeedsAttention';
+import { ReadinessPanel } from './overview/ReadinessPanel';
 
 // --- TypeScript Interfaces add kiye gaye hain ---
 interface Student { name: string; }
@@ -262,6 +263,9 @@ export function Overview() {
       {(routesLoaded || tripsError) && (
         <NeedsAttention items={attention} error={tripsError} />
       )}
+
+      {/* Everything else waiting on someone: children, families, cards, schedules. */}
+      <ReadinessPanel />
 
       {/* Metrics Row
           Operational figures first, asset totals after. The order used to be Students,

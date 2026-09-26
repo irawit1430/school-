@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Bus, Map, Route, Users, CalendarDays, CalendarOff, Settings, HelpCircle, AlertTriangle, LogOut, X , QrCode , CalendarClock } from 'lucide-react';
+import { Bus, Map, Route, Users, CalendarDays, CalendarOff, Settings, HelpCircle, AlertTriangle, LogOut, X , QrCode , CalendarClock, UserCheck } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { clsx } from 'clsx';
@@ -44,6 +44,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       label: 'Students',
       items: [
         { href: '/students', label: 'Students & Attendance', icon: Users },
+        { href: '/parents', label: 'Parents & App Invites', icon: UserCheck },
         { href: '/cards', label: 'QR Cards', icon: QrCode },
         { href: '/leaves', label: 'Leave Requests', icon: CalendarDays },
       ],

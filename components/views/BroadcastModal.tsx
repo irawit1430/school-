@@ -66,8 +66,13 @@ export function BroadcastModal({ isOpen, onClose, defaultAudience = 'PARENTS' }:
     setIsSubmitting(true);
     setError('');
     try {
-      await sendBroadcast({ title: title.trim(), message: message.trim(), audience, type });
-      toast.success(`Sent to ${AUDIENCE_COPY[audience].label.toLowerCase()}.`);
+      const result = await sendBroadcast({ title: title.trim(), message: message.trim(), audience, type });
+      // What the server did: put it in each person's app inbox, and ask for phone alerts.
+      // A phone alert handed to Google or Apple is not a phone that showed it.
+      const n = typeof result?.recipientCount === 'number' ? result.recipientCount : null;
+      toast.success(n === null
+        ? `Added to the app inbox of ${AUDIENCE_COPY[audience].label.toLowerCase()}. Phones with alerts on are notified too.`
+        : `Added to ${n} ${n === 1 ? "person's" : "people's"} app inbox. Phones with alerts on are notified too.`);
       setTitle(''); setMessage(''); setAudience(defaultAudience);
       setType('SYSTEM'); setConfirming(false);
       onClose();

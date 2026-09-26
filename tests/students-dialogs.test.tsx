@@ -187,40 +187,56 @@ const chooseCSV = async (text: string) => {
   return file;
 };
 
-test('import preview maps reordered headers correctly and submits the reviewed file', async () => {
-  const onImport = vi.fn().mockResolvedValue(undefined);
-  await render(<ImportStudentsModal onClose={vi.fn()} onImport={onImport} isSubmitting={false} />);
-  const file = await chooseCSV('Parent Name,Student Name,Roll Number,Phone\nRani,Asha,001,9876543210');
-  expect(host.textContent).toContain('1 total rows');
-  const cells = [...host.querySelectorAll('tbody td')].map(cell => cell.textContent);
-  expect(cells).toEqual(['Asha', '001', 'Rani', '9876543210']);
-  await submit();
-  expect(onImport).toHaveBeenCalledExactlyOnceWith(file);
+const totals = (over: Record<string, number> = {}) => ({ rows: 1, new: 1, updated: 0, unchanged: 0, needsCorrection: 0, parentsCreated: 1, parentsLinked: 0, noParent: 0, stopsAssigned: 1, noStop: 0, ready: 1, ...over });
+const row = (over: Record<string, unknown> = {}) => ({
+  line: 2, name: 'Asha', rfidTag: '001', student: 'NEW', state: 'INVITE_READY',
+  parent: { action: 'NEW', email: 'rani@example.test' }, stop: { action: 'ASSIGN', route: 'North Route', stop: 'Gandhi Chowk' },
+  card: 'GENERATED', ready: true, changes: [], errors: [], warnings: [], ...over,
+});
+const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
+
+test('import has the server check every row, then imports exactly the reviewed rows', async () => {
+  const check = vi.fn().mockResolvedValue({ dryRun: true, committed: false, totals: totals(), rows: [row()] });
+  const done = { dryRun: false, committed: true, totals: totals(), rows: [row()], message: 'Imported 1 new student and updated 0.' };
+  const commit = vi.fn().mockResolvedValue(done);
+  const onImported = vi.fn();
+  await render(<ImportStudentsModal onClose={vi.fn()} onImported={onImported} check={check} commit={commit} />);
+  await chooseCSV('Parent Name,Student Name,Admission No,Phone,Parent Email,Route,Stop\nRani,Asha,001,9876543210,rani@example.test,North Route,Gandhi Chowk');
+  await flush();
+  const sent = check.mock.calls[0][0];
+  expect(sent).toEqual([{ line: 2, rfidTag: '001', name: 'Asha', grade: null, guardianPhone: '9876543210', parentEmail: 'rani@example.test', parentName: 'Rani', route: 'North Route', stop: 'Gandhi Chowk', qrToken: null }]);
+  expect(host.textContent).toContain('Every row can be imported.');
+  expect(host.textContent).toContain('New parent · invite ready');
+  await act(async () => button('Import 1 student').click());
+  await flush();
+  expect(commit).toHaveBeenCalledExactlyOnceWith(sent);
+  expect(onImported).toHaveBeenCalledExactlyOnceWith(done);
 });
 
-test('import preview reports invalid rows and blocks the entire file', async () => {
-  const onImport = vi.fn();
-  await render(<ImportStudentsModal onClose={vi.fn()} onImport={onImport} isSubmitting={false} />);
-  await chooseCSV('name,rollNumber,guardianName,guardianPhone\nAsha,1,Rani,9876543210\nBina,,Parent,9876543210');
-  expect(host.textContent).toContain('2 total rows');
-  expect(host.textContent).toContain('1 rows needing correction');
-  expect(host.textContent).toContain('Line 3: rollNumber is required.');
+test('a malformed file is listed by line and never sent to the server', async () => {
+  const check = vi.fn();
+  await render(<ImportStudentsModal onClose={vi.fn()} onImported={vi.fn()} check={check} commit={vi.fn()} />);
+  await chooseCSV('studentId,name\n1,Asha\n,Bina');
+  await flush();
+  expect(host.textContent).toContain('Line 3: studentId is required.');
+  expect(check).not.toHaveBeenCalled();
   expect(button('Import students').disabled).toBe(true);
-  await submit();
-  expect(onImport).not.toHaveBeenCalled();
 });
 
-test('ignored import fields require acknowledgement and a rejected import retains the preview', async () => {
-  const onImport = vi.fn().mockRejectedValue(new Error('Roll number already exists'));
-  await render(<ImportStudentsModal onClose={vi.fn()} onImport={onImport} isSubmitting={false} />);
-  await chooseCSV('name,rollNumber,guardianName,guardianPhone,grade\nAsha,1,Rani,9876543210,5');
-  expect(button('Import 1 student').disabled).toBe(true);
-  await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
-  expect(button('Import 1 student').disabled).toBe(false);
-  await submit();
-  expect(host.textContent).toContain('Roll number already exists');
-  expect(host.querySelector('tbody')!.textContent).toContain('Asha');
-  expect(button('Import 1 student').disabled).toBe(false);
+test('rows the server says need correcting block the import, with the reason on the row', async () => {
+  const bad = row({ line: 3, name: 'Bina', rfidTag: '002', state: 'NEEDS_CORRECTION', ready: false, errors: ['No route called "Route 9". Use the route name exactly as it is on the Routes page.'] });
+  const check = vi.fn().mockResolvedValue({ dryRun: true, committed: false, totals: totals({ rows: 2, needsCorrection: 1 }), rows: [row(), bad] });
+  const commit = vi.fn();
+  await render(<ImportStudentsModal onClose={vi.fn()} onImported={vi.fn()} check={check} commit={commit} />);
+  await chooseCSV('studentId,name,route,stop\n001,Asha,North Route,Gandhi Chowk\n002,Bina,Route 9,Gate');
+  await flush();
+  expect(host.textContent).toContain('1 of 2 rows need correcting. Nothing will be imported until they are fixed.');
+  expect(host.textContent).toContain('No route called "Route 9"');
+  expect(button('Import students').disabled).toBe(true);
+  await act(async () => button('Needs correction (1)').click());
+  expect(host.querySelector('tbody')!.textContent).toContain('Bina');
+  expect(host.querySelector('tbody')!.textContent).not.toContain('Asha');
+  expect(commit).not.toHaveBeenCalled();
 });
 
 test('registration offers a pickup stop but never blocks on one', async () => {

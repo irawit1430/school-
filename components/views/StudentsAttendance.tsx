@@ -2,17 +2,19 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { confirmChildDataExport } from '@/lib/utils';
-import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, importStudentsCSV, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop } from '@/lib/api';
+import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop, type ImportResult } from '@/lib/api';
 import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
 import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
 import { SummaryCards } from './students/SummaryCards';
 import { AddStudentModal } from './students/AddStudentModal';
 import { ImportStudentsModal } from './students/ImportStudentsModal';
 import { CredentialsPopup } from './students/CredentialsPopup';
+import { InviteDialog, type InviteTarget } from './parents/InviteDialog';
 import { AssignBusModal } from './students/AssignBusModal';
 import { StudentProfileModal } from './students/StudentProfileModal';
 import { MessageParentModal } from './students/MessageParentModal';
@@ -35,6 +37,8 @@ const primaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg 
  * desk and the server's own wording doesn't say it. Everything else it writes is already
  * written for humans, so pass it straight through.
  */
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 const mappingErrorMessage = (error: unknown): string => {
   if (error instanceof ApiError) {
     if (error.status === 404) return 'This student was changed somewhere else and this assignment no longer exists. The roster is being refreshed.';
@@ -63,8 +67,13 @@ export function StudentsAttendance() {
   const [formData, setFormData] = useState({ ...emptyStudentForm });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [credentials, setCredentials] = useState<{ data: unknown; operation: 'create' | 'import' | 'reset'; count?: number } | null>(null);
+  // Only a password reset hands a password to the office now. New families get an
+  // invite instead (the Parents page), so nothing is copied out of a popup in bulk.
+  const [credentials, setCredentials] = useState<{ data: unknown; operation: 'reset' } | null>(null);
+  /** A family just created by Add student, offered an invite straight away. */
+  const [inviteParent, setInviteParent] = useState<InviteTarget | null>(null);
+  /** The last import's outcome, shown above the list until dismissed. */
+  const [lastImport, setLastImport] = useState<ImportResult['totals'] | null>(null);
   const [showPasswordRequests, setShowPasswordRequests] = useState(false);
   const [resettingParent, setResettingParent] = useState(false);
 
@@ -257,7 +266,7 @@ export function StudentsAttendance() {
     try {
       await sendMessageToParent(messageStudent.parentId, subject, body);
       setMessageStudent(null); setMessageForm({ subject: '', body: '' });
-      toast.success('Message sent to parent.');
+      toast.success("Added to the parent's app inbox. Their phone is alerted if alerts are on.");
     } catch (error) { setMessageError(apiErrorMessage(error, 'Could not send this message.')); }
     finally { writing.current = false; setIsMessageSubmitting(false); }
   };
@@ -282,52 +291,30 @@ export function StudentsAttendance() {
     if (!name || !parentName || !parentEmail) { setCreateError('Enter the student name, parent name, and parent email.'); return; }
     writing.current = true; setIsSubmitting(true); setCreateError(null);
     try {
+      // Child, parent account and stop in one request: the server saves all of it or none,
+      // so there is no "registered, but the stop was not saved" any more.
+      const stopId = formData.routeStopId || undefined;
       const result = await createStudent({ name, parentName, parentEmail,
         rfidTag: formData.rfidTag.trim() || undefined, grade: formData.grade.trim() || undefined,
-        guardianPhone: formData.guardianPhone.trim() || undefined });
+        guardianPhone: formData.guardianPhone.trim() || undefined, routeStopId: stopId });
       setIsModalOpen(false);
-      if (result.parentCredentials) setCredentials({ data: result.parentCredentials, operation: 'create', count: 1 });
-
-      // The stop is a second call \u2014 the create endpoint takes no routeStopId. So the
-      // child is registered either way, and only the stop can fail. Say which happened
-      // rather than reporting one success for two writes.
-      const newId = result?.id ?? result?.student?.id ?? null;
-      const stopId = formData.routeStopId;
-      if (stopId && newId) {
-        const route = routes.find(item => item.id === formData.routeId);
-        const stop = route?.stops?.find((item: any) => item.id === stopId);
-        try {
-          await assignStudentToStop({ studentId: newId, routeStopId: stopId });
-          setCreatedAssignmentIds(previous => new Set(previous).add(newId));
-          toast.success('Registered ' + name + ' \u00b7 ' + (route?.name ?? 'route') + ' \u00b7 ' + (stop?.name ?? 'stop') + '.');
-        } catch (assignFailure) {
-          toast.error('Registered ' + name + ', but the pickup stop was not saved: '
-            + mappingErrorMessage(assignFailure) + ' Assign it from the roster.');
-        }
-      } else if (stopId && !newId) {
-        // No id came back, so there is nothing to attach the stop to. Do not pretend.
-        toast.error('Registered ' + name + ', but the pickup stop was not saved. Assign it from the roster.');
-      } else {
-        toast.success('Student registered successfully!');
+      if (result.stopAssigned && result.student?.id) setCreatedAssignmentIds(previous => new Set(previous).add(result.student.id));
+      const route = routes.find(item => item.id === formData.routeId);
+      const stop = route?.stops?.find((item: any) => item.id === stopId);
+      toast.success('Registered ' + name + (result.stopAssigned ? ' \u00b7 ' + (route?.name ?? 'route') + ' \u00b7 ' + (stop?.name ?? 'stop') : ' (no stop yet)') + '.');
+      // A new parent account opens locked until the family has its invite.
+      if (result.parent?.created) {
+        setInviteParent({ id: result.parent.id, name: parentName, email: result.parent.email, phone: formData.guardianPhone.trim() || null });
       }
       void data.refresh(true, true);
     } catch (error) { setCreateError(apiErrorMessage(error, 'Could not register this student.')); }
     finally { writing.current = false; setIsSubmitting(false); }
   };
-  const handleImportCSV = async (file: File) => {
-    if (writing.current) return;
-    writing.current = true; setIsSubmitting(true); setImportError(null);
-    try {
-      const result = await importStudentsCSV(file);
-      setIsImportModalOpen(false);
-      if (Array.isArray(result.parentCredentials) && result.parentCredentials.length) {
-        const count = typeof result.importedCount === 'number' ? result.importedCount : undefined;
-        setCredentials({ data: result.parentCredentials, operation: 'import', count });
-      }
-      toast.success(result.message || 'Student import completed.');
-      void data.refresh(true, true);
-    } catch (error) { setImportError(apiErrorMessage(error, 'Could not import students.')); }
-    finally { writing.current = false; setIsSubmitting(false); }
+  const handleImported = (result: ImportResult) => {
+    setIsImportModalOpen(false);
+    setLastImport(result.totals);
+    toast.success(result.message || 'Roster imported.');
+    void data.refresh(true, true);
   };
   const exportCSV = (scope: 'all' | 'filtered') => {
     const rows = scope === 'all' ? students : filteredStudents;
@@ -366,11 +353,26 @@ export function StudentsAttendance() {
             <RefreshCw size={16} className={data.refreshing ? 'animate-spin' : ''} />{data.refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
           <button className={secondaryButton} onClick={() => exportCSV('all')} disabled={!students.length}><Download size={16} />Export all</button>
-          <button className={secondaryButton} onClick={() => { setImportError(null); setIsImportModalOpen(true); }}><Upload size={16} />Bulk Import</button>
+          <button className={secondaryButton} onClick={() => setIsImportModalOpen(true)}><Upload size={16} />Bulk Import</button>
           <button className={secondaryButton} onClick={() => setShowPasswordRequests(true)}><KeyRound size={16} />Password requests</button>
           <button className={primaryButton} onClick={openCreate}><Plus size={16} />Add New Student</button>
         </div>
       </div>
+
+      {lastImport && (
+        <div role="status" className="flex flex-wrap items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Roster imported: {lastImport.new} new, {lastImport.updated} completed, {lastImport.ready} fully ready to ride.</p>
+            <p className="mt-0.5">
+              {lastImport.parentsCreated > 0 ? `${plural(lastImport.parentsCreated, 'new parent account', 'new parent accounts')} cannot sign in until they get their invite. ` : ''}
+              {lastImport.noParent > 0 ? `${plural(lastImport.noParent, 'child has', 'children have')} no parent email. ` : ''}
+              {lastImport.noStop > 0 ? `${plural(lastImport.noStop, 'child has', 'children have')} no stop yet.` : ''}
+            </p>
+          </div>
+          <Link href="/parents?stage=NOT_INVITED" className={primaryButton}>Send invites</Link>
+          <button className={secondaryButton} onClick={() => setLastImport(null)} aria-label="Dismiss import summary">Dismiss</button>
+        </div>
+      )}
 
       {data.error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <AlertTriangle size={18} /><span>{data.error} {data.lastUpdated ? 'Showing the last loaded roster and attendance.' : 'The student roster is unavailable.'}</span>
@@ -464,7 +466,7 @@ export function StudentsAttendance() {
                     <p className="mt-1 text-sm">{students.length ? 'Try a different name or clear your filters.' : 'Add a student or import your roster to get started.'}</p>
                     <div className="mt-4 flex justify-center gap-3">{students.length
                       ? <button className={secondaryButton} onClick={clearFilters}>Clear filters</button>
-                      : <><button className={primaryButton} onClick={openCreate}>Add New Student</button><button className={secondaryButton} onClick={() => { setImportError(null); setIsImportModalOpen(true); }}>Bulk Import</button></>}
+                      : <><button className={primaryButton} onClick={openCreate}>Add New Student</button><button className={secondaryButton} onClick={() => setIsImportModalOpen(true)}>Bulk Import</button></>}
                     </div>
                   </td></tr>}
                 </tbody>
@@ -518,10 +520,10 @@ export function StudentsAttendance() {
         routes={routes} routesLoading={routesLoading} routesError={routesError} onRetryRoutes={() => void loadRoutes()}
         onClose={() => { if (!writing.current) setIsModalOpen(false); }} onSubmit={handleSubmit}
         formData={formData} setFormData={setFormData} isSubmitting={isSubmitting} error={createError} />}
-      {isImportModalOpen && <ImportStudentsModal onClose={() => { if (!writing.current) setIsImportModalOpen(false); }}
-        onImport={handleImportCSV} isSubmitting={isSubmitting} error={importError} />}
+      {isImportModalOpen && <ImportStudentsModal onClose={() => setIsImportModalOpen(false)} onImported={handleImported} />}
       <CredentialsPopup credentialsPopup={credentials?.data || null} setCredentialsPopup={() => setCredentials(null)}
-        operation={credentials?.operation} importedCount={credentials?.count} />
+        operation={credentials?.operation} />
+      {inviteParent && <InviteDialog parent={inviteParent} onClose={() => setInviteParent(null)} />}
       <StudentProfileModal viewStudent={viewStudent} onClose={() => setViewStudentId(null)}
         onResetParentPassword={viewStudent?.parentId ? () => void handleResetParentPassword(viewStudent) : undefined}
         resettingParent={resettingParent} />

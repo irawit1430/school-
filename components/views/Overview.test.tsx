@@ -17,6 +17,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   fetchDrivers: vi.fn(),
   approveLeave: vi.fn(),
   rejectLeave: vi.fn(),
+  fetchReadiness: vi.fn(),
 }));
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }));
@@ -32,6 +33,8 @@ describe('Overview', () => {
     (api.connectSocket as any).mockReturnValue({ on: vi.fn(), off: vi.fn(), disconnect: vi.fn() });
 
     (api.fetchBuses as any).mockResolvedValue([]);
+    // The office's exception queue loads on its own; nothing waiting in these tests.
+    (api.fetchReadiness as any).mockResolvedValue({ platform: { degraded: false, alarms: [] }, items: [], counts: {}, setup: {} });
     (api.fetchStats as any).mockResolvedValue({});
     (api.fetchRoutes as any).mockResolvedValue([]);
     (api.fetchDrivers as any).mockResolvedValue([]);
