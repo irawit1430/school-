@@ -8,7 +8,7 @@ const navigation = vi.hoisted(() => ({ query: '' }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(navigation.query) }));
 vi.mock('@/lib/api', () => ({
   fetchStudents: vi.fn(), fetchTodayAttendance: vi.fn(), fetchStats: vi.fn(), fetchRoutes: vi.fn(),
-  fetchNotifications: vi.fn(), createStudent: vi.fn(), checkStudentImport: vi.fn(), commitStudentImport: vi.fn(), sendParentInvite: vi.fn(),
+  fetchNotifications: vi.fn(), fetchAttendanceReview: vi.fn(), decideAttendanceReview: vi.fn(), createStudent: vi.fn(), checkStudentImport: vi.fn(), commitStudentImport: vi.fn(), sendParentInvite: vi.fn(),
   assignStudentToStop: vi.fn(), updateStudentMapping: vi.fn(), sendMessageToParent: vi.fn(), clearApiCache: vi.fn(),
   resetParentPassword: vi.fn(), fetchPasswordResetRequests: vi.fn(), approvePasswordReset: vi.fn(), rejectPasswordReset: vi.fn(),
   apiErrorMessage: (error: Error, fallback: string) => error.message || fallback,
@@ -49,6 +49,7 @@ beforeEach(() => {
   vi.mocked(api.fetchTodayAttendance).mockResolvedValue([]);
   vi.mocked(api.fetchStats).mockResolvedValue({ totalStudents: 2, lateArrivals: 0 });
   vi.mocked(api.fetchNotifications).mockResolvedValue([]);
+  vi.mocked(api.fetchAttendanceReview).mockResolvedValue([]);
   vi.mocked(api.fetchRoutes).mockImplementation(async options => options?.summary ? [{ id: route.id, name: route.name }] : [route]);
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
@@ -92,7 +93,7 @@ test('a second assignment still has stops after the first save refreshes the pag
 });
 
 test('same-page global search reacts to a new query and clears a restrictive status filter', async () => {
-  await render(); await click(button('Currently Boarded'));
+  await render(); await click(button('On a Bus Now'));
   navigation.query = 'q=Bina'; await render();
   expect(host.querySelector('tbody')!.textContent).toContain('Bina');
   expect(host.querySelector('tbody')!.textContent).not.toContain('Asha');
@@ -163,7 +164,7 @@ test('automatic refresh updates boarding status and clamps a shrinking second pa
   vi.useFakeTimers();
   const boarded = Array.from({ length: 9 }, (_, index) => ({ ...students[0], id: 'student-' + index, name: 'Student ' + index, boardingStatus: 'BOARDED' }));
   vi.mocked(api.fetchStudents).mockResolvedValue(boarded);
-  await render(); await click(button('Currently Boarded')); await click(button('Next page'));
+  await render(); await click(button('On a Bus Now')); await click(button('Next page'));
   expect(host.textContent).toContain('Showing 9 to 9 of 9 students');
   vi.mocked(api.fetchStudents).mockResolvedValue(boarded.map((student, index) => index === 8 ? { ...student, boardingStatus: 'ALIGHTED' } : student));
   await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
@@ -342,4 +343,24 @@ test('password requests: approving shows the new password once, declining clears
   await click(button('Decline', list().querySelector('li')!));
   expect(api.rejectPasswordReset).toHaveBeenCalledWith('req-2');
   expect(host.textContent).toContain('No one is waiting for a new password.');
+});
+
+test('the summary ring counts children accounted for, not just those on a bus right now', async () => {
+  // Asha reached school, Bina has not been scanned. "Boarded 0%" read as a bad morning.
+  vi.mocked(api.fetchStudents).mockResolvedValue([{ ...students[0], boardingStatus: 'ALIGHTED' }, students[1]]);
+  await render();
+  expect(host.querySelector('[data-testid="attendance-accounted"]')!.textContent)
+    .toBe('1 of 2 children accounted for today · 1 not scanned yet.');
+  const legend = host.querySelector('aside dl')!.textContent;
+  expect(legend).toContain('On a bus now');
+  expect(legend).toContain('Not scanned yet');
+});
+
+test('refused check-ins waiting for the office show on the page, and the readiness link opens them', async () => {
+  const refused = { id: 'c1', status: 'PENDING', decisionReason: null, createdAt: '2026-09-27T03:00:00Z', updatedAt: '2026-09-27T03:00:00Z', driverId: 'd1', driverName: 'Ravi', text: '', note: null, scans: [] };
+  vi.mocked(api.fetchAttendanceReview).mockResolvedValue([refused] as never);
+  navigation.query = 'review=1';
+  await render();
+  expect(button('Attendance to review (1)')).toBeTruthy();
+  expect(host.querySelector('dialog[open]')!.textContent).toContain('Attendance to review');
 });

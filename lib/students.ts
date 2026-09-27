@@ -7,13 +7,27 @@ export const STUDENT_STATUSES = ['Boarded', 'Dropped off', 'Did not board', 'On 
 export type StudentStatus = typeof STUDENT_STATUSES[number];
 export type StudentStatusCounts = Record<StudentStatus, number>;
 
-export const STUDENT_STATUS_META: Record<StudentStatus, { color: string; className: string }> = {
-  Boarded: { color: '#3b82f6', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  'Dropped off': { color: '#10b981', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  'Did not board': { color: '#ef4444', className: 'bg-red-50 text-red-700 border-red-200' },
-  'On leave': { color: '#a855f7', className: 'bg-purple-50 text-purple-700 border-purple-200' },
-  'Not scanned': { color: '#94a3b8', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+/**
+ * `label` is what a summary says about a group. "Boarded" read as "boarded today", so a
+ * morning where every child reached school showed "17% boarded". It means on a bus now.
+ */
+export const STUDENT_STATUS_META: Record<StudentStatus, { color: string; className: string; label: string }> = {
+  Boarded: { color: '#3b82f6', className: 'bg-blue-50 text-blue-700 border-blue-200', label: 'On a bus now' },
+  'Dropped off': { color: '#10b981', className: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Dropped off' },
+  'Did not board': { color: '#ef4444', className: 'bg-red-50 text-red-700 border-red-200', label: 'Did not board' },
+  'On leave': { color: '#a855f7', className: 'bg-purple-50 text-purple-700 border-purple-200', label: 'On leave' },
+  'Not scanned': { color: '#94a3b8', className: 'bg-slate-100 text-slate-700 border-slate-200', label: 'Not scanned yet' },
 };
+
+/**
+ * Children the school knows about today: on a bus, dropped off, a no-show or on leave.
+ * Only "not scanned yet" is an open question, so this is the number the ring shows.
+ */
+export function accountedFor(counts: StudentStatusCounts): { count: number; total: number; percent: number } {
+  const total = STUDENT_STATUSES.reduce((sum, status) => sum + counts[status], 0);
+  const count = total - counts['Not scanned'];
+  return { count, total, percent: total ? Math.round(count / total * 100) : 0 };
+}
 
 interface StudentRouteStop {
   id?: string | null;

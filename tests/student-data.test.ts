@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+  accountedFor,
   attendanceDate,
   buildAttendanceGradient,
   countStudentStatuses,
@@ -115,6 +116,14 @@ describe('school attendance reporting', () => {
       `${STUDENT_STATUS_META['On leave'].color} 60% 80%, ` +
       `${STUDENT_STATUS_META['Not scanned'].color} 80% 100%)`,
     );
+  });
+
+  it('counts everyone the school knows about today as accounted for', () => {
+    // The UAT card: 1 on a bus, 5 dropped off, 0 unknown read as "17% boarded".
+    const counts = { Boarded: 1, 'Dropped off': 5, 'Did not board': 0, 'On leave': 0, 'Not scanned': 0 };
+    expect(accountedFor(counts)).toEqual({ count: 6, total: 6, percent: 100 });
+    expect(accountedFor({ ...counts, 'Not scanned': 2 })).toEqual({ count: 6, total: 8, percent: 75 });
+    expect(accountedFor({ Boarded: 0, 'Dropped off': 0, 'Did not board': 0, 'On leave': 0, 'Not scanned': 0 }).percent).toBe(0);
   });
 
   it('draws an all-leave roster in its own color and handles an empty roster', () => {

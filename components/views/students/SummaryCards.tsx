@@ -39,10 +39,10 @@ export function SummaryCards({
             </div>
           </div>
           <div>
-            <p className="text-sm font-semibold text-slate-500">Currently Boarded</p>
+            <p className="text-sm font-semibold text-slate-500">On a Bus Now</p>
             <div className="mt-1 flex flex-wrap items-baseline gap-2">
               <span className="text-3xl font-bold text-slate-900">{presentCount}</span>
-              <span className="text-sm text-slate-600">{boardedPercentage}% of total</span>
+              <span className="text-sm text-slate-600">{boardedPercentage}% of students</span>
             </div>
           </div>
         </div>

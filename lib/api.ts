@@ -579,6 +579,49 @@ export const approvePasswordReset = async (requestId: string): Promise<IssuedPas
 export const rejectPasswordReset = async (requestId: string) =>
   api(`/password-reset-requests/${requestId}/reject`, { method: 'POST', body: {} });
 
+// ─── Refused check-ins ─────────────────────────────────────
+// A scan the server refused (trip not running, child not on this route…) used to be
+// deleted on the driver's phone. Now the driver sends it here and the office decides.
+export interface ReviewScan {
+  studentId: string;
+  studentName: string;
+  grade: string | null;
+  tripId: string;
+  routeName: string | null;
+  type: 'BOARDED' | 'ALIGHTED' | 'NO_SHOW';
+  occurredAt: string;
+  source: 'SCAN' | 'MANUAL';
+  /** Why the server refused it, in its words. */
+  reason: string;
+  idempotencyKey: string;
+}
+
+export interface AttendanceReviewCase {
+  id: string;
+  status: 'PENDING' | 'RESOLVED' | 'REJECTED';
+  decisionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  driverId: string;
+  driverName: string | null;
+  text: string;
+  note: string | null;
+  scans: ReviewScan[];
+}
+
+export const fetchAttendanceReview = async (status: 'PENDING' | 'ALL' = 'PENDING'): Promise<AttendanceReviewCase[]> => {
+  const schoolId = await getSchoolId();
+  if (!schoolId) throw new ApiError('No school ID found', 0);
+  return api<AttendanceReviewCase[]>(`/schools/${schoolId}/attendance-review?status=${status}`);
+};
+
+/** `record: true` writes the scans into attendance as office corrections. */
+export const decideAttendanceReview = async (
+  caseId: string,
+  decision: { status: 'RESOLVED' | 'REJECTED'; reason: string; record?: boolean },
+) => api<{ id: string; status: string; decisionReason: string; recorded: number }>(
+  `/attendance/review-cases/${caseId}`, { method: 'PATCH', body: decision });
+
 /** Reset a parent's password without waiting for them to ask (e.g. they phoned the office). */
 export const resetParentPassword = async (parentId: string): Promise<IssuedPassword> =>
   api<IssuedPassword>(`/parents/${parentId}/reset-password`, { method: 'POST', body: {} });

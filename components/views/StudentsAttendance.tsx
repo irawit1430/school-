@@ -3,13 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound } from 'lucide-react';
+import { Download, Plus, Upload, Eye, Mail, AlertTriangle, RefreshCw, Search, KeyRound, ClipboardCheck } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { clsx } from 'clsx';
 import { confirmChildDataExport } from '@/lib/utils';
-import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchRoutes, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop, type ImportResult } from '@/lib/api';
+import { ApiError, apiErrorMessage, assignStudentToStop, createStudent, fetchAttendanceReview, fetchRoutes, resetParentPassword, sendMessageToParent, updateStudentMapping, unassignStudentStop, type ImportResult } from '@/lib/api';
 import { isEmergencyNotification, notificationSeverity } from '@/lib/notifications';
-import { attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
+import { accountedFor, attendanceDate, buildAttendanceGradient, countStudentStatuses, formatSchoolTime, processStudents, STUDENT_STATUSES, STUDENT_STATUS_META, type ProcessedStudent, type StudentStatus } from '@/lib/students';
 import { SummaryCards } from './students/SummaryCards';
 import { AddStudentModal } from './students/AddStudentModal';
 import { ImportStudentsModal } from './students/ImportStudentsModal';
@@ -19,15 +19,16 @@ import { AssignBusModal } from './students/AssignBusModal';
 import { StudentProfileModal } from './students/StudentProfileModal';
 import { MessageParentModal } from './students/MessageParentModal';
 import { PasswordRequestsModal } from './PasswordRequestsModal';
+import { AttendanceReviewModal } from './students/AttendanceReviewModal';
 import { useStudentsData } from './students/useStudentsData';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 type Route = { id: string; name: string; stops?: { id: string; name: string; stopTime?: string }[] };
 const emptyStudentForm = { rfidTag: '', name: '', grade: '', parentEmail: '', parentName: '', guardianPhone: '', routeId: '', routeStopId: '' };
 const tabs: { label: string; status?: StudentStatus }[] = [
-  { label: 'All Students' }, { label: 'Currently Boarded', status: 'Boarded' },
+  { label: 'All Students' }, { label: 'On a Bus Now', status: 'Boarded' },
   { label: 'Dropped Off', status: 'Dropped off' }, { label: 'Did Not Board', status: 'Did not board' },
-  { label: 'On Leave', status: 'On leave' }, { label: 'Not Scanned', status: 'Not scanned' },
+  { label: 'On Leave', status: 'On leave' }, { label: 'Not Scanned Yet', status: 'Not scanned' },
 ];
 const secondaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50';
 const primaryButton = 'inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50';
@@ -51,7 +52,9 @@ const mappingErrorMessage = (error: unknown): string => {
 
 export function StudentsAttendance() {
   const data = useStudentsData();
-  const externalQuery = useSearchParams().get('q') || '';
+  const params = useSearchParams();
+  const externalQuery = params.get('q') || '';
+  const reviewLink = params.get('review') === '1';
   const [previousQuery, setPreviousQuery] = useState(externalQuery);
   const [searchQuery, setSearchQuery] = useState(externalQuery);
   const [activeTab, setActiveTab] = useState('All Students');
@@ -75,6 +78,11 @@ export function StudentsAttendance() {
   /** The last import's outcome, shown above the list until dismissed. */
   const [lastImport, setLastImport] = useState<ImportResult['totals'] | null>(null);
   const [showPasswordRequests, setShowPasswordRequests] = useState(false);
+  // Refused check-ins drivers sent in. Readiness and the bell link here with ?review=1.
+  const [showReview, setShowReview] = useState(reviewLink);
+  const [previousReviewLink, setPreviousReviewLink] = useState(reviewLink);
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
+  const [reviewChecks, setReviewChecks] = useState(0);
   const [resettingParent, setResettingParent] = useState(false);
 
   const [assignStudent, setAssignStudent] = useState<ProcessedStudent | null>(null);
@@ -108,7 +116,17 @@ export function StudentsAttendance() {
     setRouteFilter('');
     setCurrentPage(1);
   }
+  if (previousReviewLink !== reviewLink) {
+    setPreviousReviewLink(reviewLink);
+    if (reviewLink) setShowReview(true);
+  }
   useEffect(() => () => { routeRequest.current++; }, []);
+  // Counted on arrival and again each time the review closes.
+  useEffect(() => {
+    let live = true;
+    fetchAttendanceReview('PENDING').then(list => { if (live) setReviewCount(list.length); }, () => { if (live) setReviewCount(null); });
+    return () => { live = false; };
+  }, [reviewChecks]);
 
   // Keep an old snapshot associated with its original school day if refresh fails.
   const students = useMemo(() => processStudents(data.students, data.attendance, data.lastUpdated || new Date()),
@@ -116,6 +134,7 @@ export function StudentsAttendance() {
   const counts = useMemo(() => countStudentStatuses(students), [students]);
   const totalStudents = students.length;
   const boardedPercentage = totalStudents ? Math.round(counts.Boarded / totalStudents * 100) : 0;
+  const accounted = accountedFor(counts);
   const reportDate = attendanceDate(data.lastUpdated || new Date());
   const grades = [...new Set(students.map(student => student.grade).filter(Boolean))].sort();
   const routeNames = [...new Set(students.map(student => student.route))].sort();
@@ -355,6 +374,9 @@ export function StudentsAttendance() {
           <button className={secondaryButton} onClick={() => exportCSV('all')} disabled={!students.length}><Download size={16} />Export all</button>
           <button className={secondaryButton} onClick={() => setIsImportModalOpen(true)}><Upload size={16} />Bulk Import</button>
           <button className={secondaryButton} onClick={() => setShowPasswordRequests(true)}><KeyRound size={16} />Password requests</button>
+          <button className={clsx(secondaryButton, reviewCount ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100' : '')} onClick={() => setShowReview(true)}>
+            <ClipboardCheck size={16} />Attendance to review{reviewCount ? ` (${reviewCount})` : ''}
+          </button>
           <button className={primaryButton} onClick={openCreate}><Plus size={16} />Add New Student</button>
         </div>
       </div>
@@ -487,10 +509,13 @@ export function StudentsAttendance() {
               <h2 className="font-bold text-slate-900">Attendance Summary</h2>
               <p className="mt-1 text-xs text-slate-500">All students · {reportDate}</p>
               {totalStudents ? <div className="mx-auto my-5 flex aspect-square w-40 max-w-full items-center justify-center rounded-full" style={{ background: buildAttendanceGradient(counts) }} aria-hidden="true">
-                <div className="flex aspect-square w-4/5 items-center justify-center rounded-full bg-white text-center"><div><p className="text-3xl font-bold">{boardedPercentage}%</p><p className="text-xs text-slate-600">Currently boarded</p></div></div>
+                <div className="flex aspect-square w-4/5 items-center justify-center rounded-full bg-white text-center"><div><p className="text-2xl font-bold">{accounted.count} of {accounted.total}</p><p className="text-xs text-slate-600">accounted for · {accounted.percent}%</p></div></div>
               </div> : <p className="my-5 text-sm text-slate-500">No attendance to summarize yet.</p>}
+              {totalStudents > 0 && <p className="mb-3 text-xs text-slate-600" data-testid="attendance-accounted">
+                {accounted.count} of {accounted.total} children accounted for today{counts['Not scanned'] ? ` · ${counts['Not scanned']} not scanned yet` : ''}.
+              </p>}
               <dl className="space-y-2">{STUDENT_STATUSES.map(status => <div key={status} className="flex items-center justify-between gap-2 text-sm">
-                <dt className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: STUDENT_STATUS_META[status].color }} />{status}</dt><dd className="font-semibold">{counts[status]}</dd>
+                <dt className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: STUDENT_STATUS_META[status].color }} />{STUDENT_STATUS_META[status].label}</dt><dd className="font-semibold">{counts[status]}</dd>
               </div>)}</dl>
             </section>
             <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -528,6 +553,7 @@ export function StudentsAttendance() {
         onResetParentPassword={viewStudent?.parentId ? () => void handleResetParentPassword(viewStudent) : undefined}
         resettingParent={resettingParent} />
       <PasswordRequestsModal open={showPasswordRequests} onClose={() => setShowPasswordRequests(false)} />
+      <AttendanceReviewModal open={showReview} onClose={() => { setShowReview(false); setReviewChecks(n => n + 1); void data.refresh(true, true); }} />
       <MessageParentModal messageStudent={messageStudent} onClose={closeMessage} onSubmit={handleMessageSubmit}
         messageForm={messageForm} setMessageForm={setMessageForm} isMessageSubmitting={isMessageSubmitting} error={messageError} />
     </div>
